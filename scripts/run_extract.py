@@ -93,7 +93,7 @@ def parse_xdatcar(xdat_path: Path) -> Tuple[Optional[np.ndarray], Optional[np.nd
         return None, None, []
 
     lines = [l.rstrip() for l in xdat_path.read_text().splitlines()]
-    if len(lines) < 7:
+    if len(lines) < 8:
         print(f"[ERROR][XDATCAR] File is too short (less than 7 lines): {xdat_path}", file=sys.stderr)
         return None, None, []
 
