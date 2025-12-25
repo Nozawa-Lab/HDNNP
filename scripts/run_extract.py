@@ -87,7 +87,7 @@ def parse_energies(osz_path: Path) -> list[float]:
 # XDATCAR → cell, Z, list[fractional‑coords]
 # --------------------------------------------------------------------
 def parse_xdatcar(xdat_path: Path) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], List[np.ndarray]]:
-    """XDATCAR を読み込み (cell, Z, frac_frames) を返す。失敗時は (None, None, [])"""
+    """XDATCAR を読み込み (cell, Z_np, frac_frames) を返す。失敗時は (None, None, [])"""
     if not xdat_path.exists():
         print(f"[ERROR][XDATCAR] File not found: {xdat_path}", file=sys.stderr)
         return None, None, []
