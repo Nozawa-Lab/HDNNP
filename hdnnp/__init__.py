@@ -2,6 +2,7 @@
 
 __version__ = "0.1.0"
 
+from . import config
 # パッケージ公開 API
 from .config import (
     PROJECT_ROOT, R_CUT, G2_ETA, G2_RS, G3_ETA, G3_LAM, G3_ZET,
