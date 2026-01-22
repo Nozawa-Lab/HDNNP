@@ -13,7 +13,7 @@ from typing import List, Dict, Any
 
 import numpy as np
 import torch
-from torch import Tensor
+from torch import Tensor #型注釈用
 from torch.utils.data import Dataset, DataLoader
 
 # config は get_dataloader の呼び出し元で参照されるため、ここでは直接インポート不要
