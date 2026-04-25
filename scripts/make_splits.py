@@ -54,12 +54,14 @@ def main():
         default=hdnnp_config.SPLIT_TRAIN_FRACTION, # config からデフォルト値を取得
         help=f'Fraction of samples for training set (default from config: {hdnnp_config.SPLIT_TRAIN_FRACTION})'
     )
+    '''
     parser.add_argument(
         '--valid-fraction',
         type=float,
         default=hdnnp_config.SPLIT_VALID_FRACTION, # config からデフォルト値を取得
         help=f'Fraction of samples for validation set (default from config: {hdnnp_config.SPLIT_VALID_FRACTION})'
     )
+    '''
     parser.add_argument(
         '--splits-filename',
         type=str,
@@ -71,36 +73,42 @@ def main():
     if not args.processed_dir.is_dir():
         print(f"Error: Processed directory not found: {args.processed_dir}", file=sys.stderr)
         sys.exit(1)
-        
+    
+    proc_train_valid = args.processed_dir / "train_valid"
+    proc_test = args.processed_dir / "test"
+    
     # Scan processed directory for .npz files
-    files = sorted([p.stem for p in args.processed_dir.glob('*.npz')])
-    if not files:
+    #files = sorted([p.stem for p in args.processed_dir.glob('*.npz')])
+    files_train_valid = sorted([p.stem for p in proc_train_valid.glob('*.npz')])
+    files_test = sorted([p.stem for p in proc_test.glob('*.npz')])
+    if not files_train_valid or not files_test:
         # raise RuntimeError(f'No .npz files found in {args.processed_dir}')
-        print(f"Warning: No .npz files found in {args.processed_dir}. Generating empty splits.json.", file=sys.stderr)
+        print(f"Warning: No .npz files found in {proc_train_valid} or {proc_test}. Generating empty splits.json.", file=sys.stderr)
         # 空の splits を作成して終了する
         splits = {'train': [], 'valid': [], 'test': []}
     else:
         # Shuffle with fixed seed
         random.seed(args.seed)
-        random.shuffle(files)
+        random.shuffle(files_train_valid)
 
-        n = len(files)
+        n = len(files_train_valid)
         n_train = int(n * args.train_fraction)
-        n_valid = int(n * args.valid_fraction)
-
+        #n_valid = int(n * args.valid_fraction)
+        '''
         if n_train + n_valid > n:
             print(f"Error: train_fraction ({args.train_fraction}) + valid_fraction ({args.valid_fraction}) > 1.0. Cannot create splits.", file=sys.stderr)
             # n_valid を調整するなどの処理も可能だが、ここではエラーとする
             n_valid = n - n_train
             if n_valid < 0: n_valid = 0
             print(f"Adjusting valid samples to {n_valid} to fit total samples {n}.", file=sys.stderr)
+        '''
 
         # ▼▼▼ 変更箇所 ▼▼▼
         # 各リストを分割した後に、sorted() を使ってアルファベット順にソートする
         splits = {
-            'train': sorted(files[:n_train]),
-            'valid': sorted(files[n_train : n_train + n_valid]),
-            'test':  sorted(files[n_train + n_valid:]),
+            'train': sorted(files_train_valid[:n_train]),
+            'valid': sorted(files_train_valid[n_train :]),
+            'test':  sorted(files_test),
         }
         # ▲▲▲ 変更ここまで ▲▲▲
 
