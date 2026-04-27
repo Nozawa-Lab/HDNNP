@@ -77,8 +77,8 @@ G3_ETA: List[float] = [0.01, 0.1]
 
 G3_LAM: List[int] = [1, -1]
 G3_ZET: List[float] = [1.0, 4.0]
-SPECIES: Tuple[str, ...] = ("Al", "Fe", "Pt")
-Z2ELEMENT: Dict[int, str] = {13: "Al", 26: "Fe", 78: "Pt"}
+SPECIES: Tuple[str, ...] = ("Al", "Fe", "Pd")
+Z2ELEMENT: Dict[int, str] = {13: "Al", 26: "Fe", 46: "Pd"}
 
 # ------------------------------------------------------------------
 # Model Configuration
