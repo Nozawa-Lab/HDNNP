@@ -2,3 +2,4 @@ data/
 chkpt/
 scripts/__pycache__
 hdnnp/__pycache__
+log*
