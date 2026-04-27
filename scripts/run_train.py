@@ -488,6 +488,11 @@ def main():
             log("No Force RMSE history to plot.", level="WARN")
     else:
         log("Model training failed. Skipping final evaluation and plotting.", level="WARN")
+    
+    print(rmse_E_final)
+    print(rmse_F_final)
+    print(E_true_pa_plot)
+    print(E_pred_pa_plot)
 
 if __name__ == '__main__':
     main()
