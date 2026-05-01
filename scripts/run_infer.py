@@ -328,7 +328,14 @@ def main():
             log("Generating plot for per-atom energy vs. structure number (Train Set)...")
             E_true_pa_train = train_plot_data['E_true_pa']
             E_pred_pa_train = train_plot_data['E_pred_pa']
-            
+
+            for i in range(len(splits['train'])):
+                frame_name = splits['train'][i]
+                train_per_ene_true = E_true_pa_train[i]
+                train_per_ene_pred = E_pred_pa_train[i]
+                print(f'{frame_name}のエネルギーの真値(1原子あたり): {train_per_ene_true}')
+                print(f'{frame_name}のエネルギーの予測値(1原子あたり): {train_per_ene_pre}')
+
             plt.figure(figsize=(10, 6))
             plt.plot(E_true_pa_train, 'o', color='royalblue', markersize=5, label='True Energy per Atom (Train)')
             plt.plot(E_pred_pa_train, 's', color='darkorange', markersize=5, alpha=0.7, label='Predicted Energy per Atom (Train)')
@@ -375,6 +382,13 @@ def main():
                 plot_path = CHECKPOINT_DIR / hdnnp_config.PLOT_ENERGY_SCATTER_TEST_INFER_FILENAME
                 plt.savefig(plot_path, dpi=hdnnp_config.PLOT_DPI); plt.close()
                 log(f'Plot saved to: {plot_path}')
+
+                for i in range(len(splits['test'])):
+                    frame_name = splits['test'][i]
+                    test_per_ene_true = E_true_pa[i]
+                    test_per_ene_pred = E_pred_pa[i]
+                    print(f'{frame_name}のエネルギーの真値(1原子あたり): {test_per_ene_true}')
+                    print(f'{frame_name}のエネルギーの予測値(1原子あたり): {test_per_ene_pred}')
 
             if use_force and F_true_flat.size > 0:
                 log("Generating scatter plot for force components (Test Set)...")
