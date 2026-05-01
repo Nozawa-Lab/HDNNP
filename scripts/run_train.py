@@ -409,6 +409,15 @@ def main():
             E_true_pa_np = E_true_pa_plot.numpy()
             E_pred_pa_np = E_pred_pa_plot.numpy()
 
+            print(f'エネルギーのRMSE(1原子あたり): {rmse_E_final.item()}')
+            print(f'力のRMSE(1成分あたり){rmse_F_final.item()}')
+            for i in range(len(splits['train'])):
+                frame_name = splits['train'][i]
+                per_ene_true = E_true_pa_np[i]
+                per_ene_pred = E_pred_pa_np[i]
+                print(f'{frame_name}のエネルギーの真値(1原子あたり): {per_ene_true}')
+                print(f'{frame_name}のエネルギーの予測値(1原子あたり): {per_ene_pred}')
+
             plt.figure(figsize=(8,6))
             plt.scatter(E_true_pa_np, E_pred_pa_np, alpha=0.5, label="Data points")
             min_val_scatter, max_val_scatter = 0, 0
@@ -488,15 +497,6 @@ def main():
             log("No Force RMSE history to plot.", level="WARN")
     else:
         log("Model training failed. Skipping final evaluation and plotting.", level="WARN")
-    
-    print(f'エネルギーのRMSE(1原子あたり): {rmse_E_final.item()}')
-    print(f'力のRMSE(1成分あたり){rmse_F_final.item()}')
-    for i in range(len(train_loader_full_no_shuffle)):
-        frame_name = splits['train'][i]
-        per_ene_true = E_true_pa_plot[i]
-        per_ene_pre = E_pred_pa_plot[i]
-        print(f'{frame_name}のエネルギーの真値(1原子あたり): {per_ene_true}')
-        print(f'{frame_name}のエネルギーの予測値(1原子あたり): {per_ene_pre}')
 
 if __name__ == '__main__':
     main()
