@@ -489,10 +489,14 @@ def main():
     else:
         log("Model training failed. Skipping final evaluation and plotting.", level="WARN")
     
-    print(rmse_E_final)
-    print(rmse_F_final)
-    print(E_true_pa_plot)
-    print(E_pred_pa_plot)
+    print(f'エネルギーのRMSE(1原子あたり): {rmse_E_final.item()}')
+    print(f'力のRMSE(1成分あたり){rmse_F_final.item()}')
+    for i in range(len(train_loader_full_no_shuffle)):
+        frame_name = splits['train'][i]
+        per_ene_true = E_true_pa_plot[i]
+        per_ene_pre = E_pred_pa_plot[i]
+        print(f'{frame_name}のエネルギーの真値(1原子あたり): {per_ene_true}')
+        print(f'{frame_name}のエネルギーの予測値(1原子あたり): {per_ene_pre}')
 
 if __name__ == '__main__':
     main()
