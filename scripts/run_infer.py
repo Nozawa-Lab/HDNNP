@@ -334,7 +334,7 @@ def main():
                 train_per_ene_true = E_true_pa_train[i]
                 train_per_ene_pred = E_pred_pa_train[i]
                 print(f'{frame_name}のエネルギーの真値(1原子あたり): {train_per_ene_true}')
-                print(f'{frame_name}のエネルギーの予測値(1原子あたり): {train_per_ene_pre}')
+                print(f'{frame_name}のエネルギーの予測値(1原子あたり): {train_per_ene_pred}')
 
             plt.figure(figsize=(10, 6))
             plt.plot(E_true_pa_train, 'o', color='royalblue', markersize=5, label='True Energy per Atom (Train)')
