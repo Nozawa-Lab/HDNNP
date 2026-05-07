@@ -3,3 +3,5 @@ chkpt/
 scripts/__pycache__
 hdnnp/__pycache__
 log*
+testlog
+trainlog
