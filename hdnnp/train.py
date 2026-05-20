@@ -221,6 +221,16 @@ def train(
                                 force_loss_val = masked_force_loss_components.sum() / num_actual_force_components
                             loss += hdnnp_config.LOSS_BETA_F * force_loss_val
 
+                            #L2正則化追加
+                            lambda_l2 = 1e-6
+                            l2_norm = 0.0
+
+                            for name, param in model.named_parameters():
+                                if param.requires_grad and "weight" in name:
+                                    l2_norm = l2_norm + torch.sum(param ** 2)
+                            
+                            loss = loss + lambda_l2 * l2_norm
+
                         if loss.requires_grad:
                             loss.backward()
                         
