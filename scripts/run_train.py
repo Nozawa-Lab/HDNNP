@@ -58,7 +58,9 @@ from hdnnp.symmetry_calculator import SymmetryCalculator
 from hdnnp.model import HDNNPModel
 
 PROCESSED_DIR = hdnnp_config.PROCESSED_DATA_DIR
-TRAIN_VALID_DIR = PROCESSED_DIR / "train_valid"
+#TRAIN_VALID_DIR = PROCESSED_DIR / "train_valid"
+TRAIN_DIR = PROCESSED_DIR / "train"
+VALID_DIR = PROCESSED_DIR / "valid"
 TEST_DIR = PROCESSED_DIR / "test"
 SPLITS_JSON = PROCESSED_DIR / hdnnp_config.SPLITS_FILENAME
 
@@ -337,7 +339,7 @@ def main():
 
     train_loader_full_no_shuffle = get_dataloader(
         splits_json=SPLITS_JSON,
-        processed_dir=TRAIN_VALID_DIR,
+        processed_dir=TRAIN_DIR,
         split='train',
         batch_size=n_train,
         shuffle=False,
@@ -347,7 +349,7 @@ def main():
 
     train_loader = get_dataloader(
         splits_json=SPLITS_JSON,
-        processed_dir=TRAIN_VALID_DIR,
+        processed_dir=TRAIN_DIR,
         split='train',
         batch_size=train_batch_size,
         shuffle=hdnnp_config.DATALOADER_SHUFFLE_TRAIN and not is_lbfgs,
