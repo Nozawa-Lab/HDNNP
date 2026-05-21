@@ -339,7 +339,7 @@ def main():
 
     train_loader_full_no_shuffle = get_dataloader(
         splits_json=SPLITS_JSON,
-        processed_dir=TRAIN_VALID_DIR,
+        processed_dir=TRAIN_DIR,
         split='train',
         batch_size=n_train,
         shuffle=False,
@@ -349,7 +349,7 @@ def main():
 
     train_loader = get_dataloader(
         splits_json=SPLITS_JSON,
-        processed_dir=TRAIN_VALID_DIR,
+        processed_dir=TRAIN_DIR,
         split='train',
         batch_size=train_batch_size,
         shuffle=hdnnp_config.DATALOADER_SHUFFLE_TRAIN and not is_lbfgs,
