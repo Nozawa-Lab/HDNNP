@@ -58,7 +58,9 @@ from hdnnp.symmetry_calculator import SymmetryCalculator
 from hdnnp.model import HDNNPModel
 
 PROCESSED_DIR = hdnnp_config.PROCESSED_DATA_DIR
-TRAIN_VALID_DIR = PROCESSED_DIR / "train_valid"
+#TRAIN_VALID_DIR = PROCESSED_DIR / "train_valid"
+TRAIN_DIR = PROCESSED_DIR / "train"
+VALID_DIR = PROCESSED_DIR / "valid"
 TEST_DIR = PROCESSED_DIR / "test"
 SPLITS_JSON = PROCESSED_DIR / hdnnp_config.SPLITS_FILENAME
 
