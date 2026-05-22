@@ -50,7 +50,9 @@ from hdnnp.symmetry_calculator import SymmetryCalculator
 from hdnnp.loss import combined_loss
 
 PROCESSED_DIR = hdnnp_config.PROCESSED_DATA_DIR
-TRAIN_VALID_DIR = PROCESSED_DIR / "train_valid"
+#TRAIN_VALID_DIR = PROCESSED_DIR / "train_valid"
+TRAIN_DIR = PROCESSED_DIR / "train"
+VALID_DIR = PROCESSED_DIR / "valid"
 TEST_DIR = PROCESSED_DIR / "test"
 SPLITS_JSON = PROCESSED_DIR / hdnnp_config.SPLITS_FILENAME
 
@@ -315,7 +317,7 @@ def main():
     if 'train' in splits and splits['train']:
         n_train = len(splits['train'])
         train_loader_infer = get_dataloader(
-            splits_json=SPLITS_JSON, processed_dir=TRAIN_VALID_DIR, split='train',
+            splits_json=SPLITS_JSON, processed_dir=TRAIN_DIR, split='train',
             batch_size=n_train, shuffle=False,
             num_workers=hdnnp_config.DATALOADER_NUM_WORKERS, 
             pin_memory=(DEVICE.type == 'cuda' and hdnnp_config.DATALOADER_PIN_MEMORY))
