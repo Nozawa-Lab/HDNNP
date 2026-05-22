@@ -86,7 +86,7 @@ def main():
     files_train = sorted([p.stem for p in proc_train.glob('*.npz')])
     files_valid = sorted([p.stem for p in proc_valid.glob('*.npz')])
     files_test = sorted([p.stem for p in proc_test.glob('*.npz')])
-    if not files_train_valid or not files_test:
+    if not files_train or not files_valid or not files_test:
         # raise RuntimeError(f'No .npz files found in {args.processed_dir}')
         print(f"Warning: No .npz files found in {proc_train_valid} or {proc_test}. Generating empty splits.json.", file=sys.stderr)
         # 空の splits を作成して終了する
