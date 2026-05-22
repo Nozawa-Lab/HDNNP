@@ -48,13 +48,14 @@ def main():
         default=hdnnp_config.SPLIT_SEED, # config からデフォルト値を取得
         help=f'Random seed for reproducible shuffling (default from config: {hdnnp_config.SPLIT_SEED})'
     )
+    '''
     parser.add_argument(
         '--train-fraction',
         type=float,
         default=hdnnp_config.SPLIT_TRAIN_FRACTION, # config からデフォルト値を取得
         help=f'Fraction of samples for training set (default from config: {hdnnp_config.SPLIT_TRAIN_FRACTION})'
     )
-    '''
+    
     parser.add_argument(
         '--valid-fraction',
         type=float,
@@ -74,12 +75,16 @@ def main():
         print(f"Error: Processed directory not found: {args.processed_dir}", file=sys.stderr)
         sys.exit(1)
     
-    proc_train_valid = args.processed_dir / "train_valid"
+    #proc_train_valid = args.processed_dir / "train_valid"
+    proc_train = args.processed_dir / "train"
+    proc_valid = args.processed_dir / "valid"
     proc_test = args.processed_dir / "test"
     
     # Scan processed directory for .npz files
     #files = sorted([p.stem for p in args.processed_dir.glob('*.npz')])
-    files_train_valid = sorted([p.stem for p in proc_train_valid.glob('*.npz')])
+    #files_train_valid = sorted([p.stem for p in proc_train_valid.glob('*.npz')])
+    files_train = sorted([p.stem for p in proc_train.glob('*.npz')])
+    files_valid = sorted([p.stem for p in proc_valid.glob('*.npz')])
     files_test = sorted([p.stem for p in proc_test.glob('*.npz')])
     if not files_train_valid or not files_test:
         # raise RuntimeError(f'No .npz files found in {args.processed_dir}')
@@ -89,10 +94,10 @@ def main():
     else:
         # Shuffle with fixed seed
         random.seed(args.seed)
-        random.shuffle(files_train_valid)
+        #random.shuffle(files_train_valid)
 
-        n = len(files_train_valid)
-        n_train = int(n * args.train_fraction)
+        #n = len(files_train_valid)
+        #n_train = int(n * args.train_fraction)
         #n_valid = int(n * args.valid_fraction)
         '''
         if n_train + n_valid > n:
@@ -106,8 +111,8 @@ def main():
         # ▼▼▼ 変更箇所 ▼▼▼
         # 各リストを分割した後に、sorted() を使ってアルファベット順にソートする
         splits = {
-            'train': sorted(files_train_valid[:n_train]),
-            'valid': sorted(files_train_valid[n_train :]),
+            'train': sorted(files_train),
+            'valid': sorted(files_valid),
             'test':  sorted(files_test),
         }
         # ▲▲▲ 変更ここまで ▲▲▲
