@@ -11,6 +11,7 @@ import sys
 import os
 from pathlib import Path
 from typing import Union, List, Tuple, Optional # List, Tuple, Optional を追加
+import torch
 
 import numpy as np
 from ase.data import atomic_numbers
