@@ -104,7 +104,7 @@ def parse_xdatcar(xdat_path: Path) -> Tuple[Optional[np.ndarray], Optional[np.nd
         
         cell_lines = [lines[i].split() for i in (2, 3, 4)]
         if not all(len(cl) == 3 for cl in cell_lines): raise ValueError("Cell matrix lines are malformed.")
-        cell = np.array([[float(c) for c in cl] for cl in cell_lines], dtype=np.float32) * scale_factor
+        cell = np.array([[float(c) for c in cl] for cl in cell_lines], dtype=np.float32 if hdnnp_config.DEFAULT_TORCH_DTYPE == torch.float32 else np.float64) * scale_factor
         
         species_symbols = lines[5].split()
         atom_counts_str = lines[6].split()
@@ -155,7 +155,7 @@ def parse_xdatcar(xdat_path: Path) -> Tuple[Optional[np.ndarray], Optional[np.nd
                     raise ValueError("Coordinate line has less than 3 elements.")
                 
                 frame_coords_str = [fcs[:3] for fcs in frame_coords_str_list] # 最初の3要素のみ取得
-                frame_coords = np.array(frame_coords_str, dtype=np.float32)
+                frame_coords = np.array(frame_coords_str, dtype=np.float32 if hdnnp_config.DEFAULT_TORCH_DTYPE == torch.float32 else np.float64)
 
 
                 if frame_coords.shape != (N_atoms_from_header, 3):
@@ -229,7 +229,7 @@ def parse_forces_manually_from_outcar(outcar_content: str, num_atoms: int, name_
         
         if len(forces_list) == num_atoms:
             # print(f"[INFO] {name_prefix}: Manual force parse: Successfully parsed {len(forces_list)} forces.") # デバッグ用
-            return np.array(forces_list, dtype=np.float32)
+            return np.array(forces_list, dtype=np.float32 if hdnnp_config.DEFAULT_TORCH_DTYPE == torch.float32 else np.float64)
         else:
             print(f"[WARN] {name_prefix}: Manual force parse: Expected {num_atoms} forces, but found {len(forces_list)}.", file=sys.stderr)
             return None
@@ -372,10 +372,10 @@ def extract_case(case_dir: Path, out_dir: Path, raw_dir_base: Path, npz_format: 
             print(f"[WARN] {name_prefix}: Final manual force parse failed. Forces will be NaN.")
 
     for i in range(T):
-        R_cartesian = (frac_frames[i] @ cell).astype(np.float32) # cell は XDATCAR から取得したものを使い続ける
-        E_total = np.array(E_list[i], dtype=np.float32)
+        R_cartesian = (frac_frames[i] @ cell).astype(np.float32 if hdnnp_config.DEFAULT_TORCH_DTYPE == torch.float32 else np.float64) # cell は XDATCAR から取得したものを使い続ける
+        E_total = np.array(E_list[i], dtype=np.float32 if hdnnp_config.DEFAULT_TORCH_DTYPE == torch.float32 else np.float64)
         current_Z_frame = Z_atoms # XDATCAR から取得した Z_atoms を使用
-        F_cartesian = np.full((N_atoms, 3), np.nan, dtype=np.float32) 
+        F_cartesian = np.full((N_atoms, 3), np.nan, dtype=np.float32 if hdnnp_config.DEFAULT_TORCH_DTYPE == torch.float32 else np.float64) 
 
         if traj_outcar and i < len(traj_outcar): 
             try:
@@ -386,14 +386,14 @@ def extract_case(case_dir: Path, out_dir: Path, raw_dir_base: Path, npz_format: 
                 else:
                     forces_raw = atoms_obj.get_forces(apply_constraint=False)
                     if forces_raw is not None and isinstance(forces_raw, np.ndarray) and forces_raw.shape == (N_atoms, 3):
-                        F_cartesian = forces_raw.astype(np.float32)
+                        F_cartesian = forces_raw.astype(np.float32 if hdnnp_config.DEFAULT_TORCH_DTYPE == torch.float32 else np.float64)
                     elif forces_raw is not None: 
                         print(f"[WARN] {name_prefix} frame {i}: Forces from OUTCAR (ASE) have incorrect shape. Expected ({N_atoms}, 3), got {forces_raw.shape}. Storing NaNs.", file=sys.stderr)
             except Exception as e_get_forces:
                 print(f"[WARN] {name_prefix} frame {i}: Error calling get_forces() via ASE: {e_get_forces}. Storing NaNs.", file=sys.stderr)
         elif manual_forces_for_frames is not None and i == 0 : # manual_forces は最初のフレームにのみ適用される想定 (単一ブロックOUTCARの場合)
             if manual_forces_for_frames.shape == (N_atoms, 3):
-                F_cartesian = manual_forces_for_frames.astype(np.float32)
+                F_cartesian = manual_forces_for_frames.astype(np.float32 if hdnnp_config.DEFAULT_TORCH_DTYPE == torch.float32 else np.float64)
                 # print(f"[INFO] {name_prefix} frame {i}: Used manually parsed forces.") # デバッグ用
             else:
                 print(f"[WARN] {name_prefix} frame {i}: Manually parsed forces have incorrect shape. Expected ({N_atoms}, 3), got {manual_forces_for_frames.shape}. Storing NaNs.", file=sys.stderr)

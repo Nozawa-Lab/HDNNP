@@ -4,8 +4,23 @@ hdnnp.config
 Configuration parameters for the HDNNP model and symmetry-function calculations.
 """
 
+import os
 from pathlib import Path
 from typing import List, Tuple, Any, Dict, Union, Optional
+
+import torch
+
+# ------------------------------------------------------------------
+# Precision Configuration
+# ------------------------------------------------------------------
+#: 全体のPyTorch演算精度。環境変数 HDNNP_FLOAT_PRECISION で切り替え可能
+DEFAULT_FLOAT_PRECISION: str = os.getenv("HDNNP_FLOAT_PRECISION", "float64").lower()
+if DEFAULT_FLOAT_PRECISION in {"64", "float64", "double"}:
+    DEFAULT_TORCH_DTYPE: torch.dtype = torch.float64
+elif DEFAULT_FLOAT_PRECISION in {"32", "float32", "single"}:
+    DEFAULT_TORCH_DTYPE: torch.dtype = torch.float32
+else:
+    raise ValueError("HDNNP_FLOAT_PRECISION must be 'float32' or 'float64'.")
 
 # ------------------------------------------------------------------
 # Project Structure Configuration
@@ -33,7 +48,7 @@ SF_RANGE_FILENAME: str = "sf_range.pt"
 # Execution Environment
 # ------------------------------------------------------------------
 #: 計算に使用するデバイス ("cuda", "cpu", または "auto" で自動検出)
-DEVICE: str = "auto"
+DEVICE: str = "cuda:0"
 #: PyTorchが使用するCPUコア数の割合 (0.0 < ratio <= 1.0)
 CPU_USAGE_RATIO: float = 0.4
 #: 数値計算上の微小量 (対称性関数計算などで使用)
@@ -65,20 +80,20 @@ DATALOADER_PIN_MEMORY: bool = True
 # ------------------------------------------------------------------
 # Symmetry Function Configuration
 # ------------------------------------------------------------------
-R_CUT: float = 7.0
+R_CUT: float = 6.0
 # G2_RS: [0.0]から、原子間距離をカバーする複数の値に変更
-G2_RS: List[float] = [2.0, 3.0, 4.0, 5.0, 6.0] 
+G2_RS: List[float] = [0.0] 
 
 # G2_ETA: 短距離の相互作用を捉えるため、より大きな値も追加
-G2_ETA: List[float] = [0.01, 0.1, 0.5] 
+G2_ETA: List[float] = [0.01, 0.05, 0.1] 
 
 # G3_ETA: G2と同様に設定を少し広げる
 G3_ETA: List[float] = [0.01, 0.1] 
 
 G3_LAM: List[int] = [1, -1]
 G3_ZET: List[float] = [1.0, 4.0]
-SPECIES: Tuple[str, ...] = ("Al", "Fe", "Pd")
-Z2ELEMENT: Dict[int, str] = {13: "Al", 26: "Fe", 46: "Pd"}
+SPECIES: Tuple[str, ...] = ("Al", "Fe", "Pt")
+Z2ELEMENT: Dict[int, str] = {13: "Al", 26: "Fe", 78: "Pt"}
 
 # ------------------------------------------------------------------
 # Model Configuration
@@ -88,14 +103,14 @@ HIDDEN_LAYERS: List[int] = [20, 20]
 #: Dropout を使用するかどうかのスイッチ
 USE_DROPOUT: bool = False
 #: Dropout率 (USE_DROPOUTがTrueの場合にのみ有効)
-DROPOUT_RATE: float = 0.001 # 一般的には 0.1 ~ 0.5 の値が使われます
+DROPOUT_RATE: float = 0.1 # 一般的には 0.1 ~ 0.5 の値が使われます
 
 
 # ------------------------------------------------------------------
 # Training Configuration
 # ------------------------------------------------------------------
 #: 学習に力の情報を使用するかどうか
-USE_FORCE_TRAINING: bool = True
+USE_FORCE_TRAINING: bool = False
 
 # ▼▼▼ 以下を追加 ▼▼▼
 # --- Extrapolation Check Configuration ---

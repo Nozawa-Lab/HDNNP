@@ -12,6 +12,7 @@ import math
 import torch
 from torch import Tensor
 from typing import Tuple, List, Dict
+import sys
 
 # config をインポート
 from . import config as hdnnp_config
@@ -59,11 +60,11 @@ class SymmetryCalculator:
         計算に必要な内部状態（ルックアップテーブルなど）を準備する。
         """
         self.r_cut = hdnnp_config.R_CUT
-        self.g2_eta_t = torch.tensor(hdnnp_config.G2_ETA, dtype=torch.float32)
-        self.g2_rs_t = torch.tensor(hdnnp_config.G2_RS, dtype=torch.float32)
-        self.g3_eta_t = torch.tensor(hdnnp_config.G3_ETA, dtype=torch.float32)
-        self.g3_lam_t = torch.tensor(hdnnp_config.G3_LAM, dtype=torch.float32)
-        self.g3_zet_t = torch.tensor(hdnnp_config.G3_ZET, dtype=torch.float32)
+        self.g2_eta_t = torch.tensor(hdnnp_config.G2_ETA, dtype=hdnnp_config.DEFAULT_TORCH_DTYPE)
+        self.g2_rs_t = torch.tensor(hdnnp_config.G2_RS, dtype=hdnnp_config.DEFAULT_TORCH_DTYPE)
+        self.g3_eta_t = torch.tensor(hdnnp_config.G3_ETA, dtype=hdnnp_config.DEFAULT_TORCH_DTYPE)
+        self.g3_lam_t = torch.tensor(hdnnp_config.G3_LAM, dtype=hdnnp_config.DEFAULT_TORCH_DTYPE)
+        self.g3_zet_t = torch.tensor(hdnnp_config.G3_ZET, dtype=hdnnp_config.DEFAULT_TORCH_DTYPE)
         self.species_list = hdnnp_config.SPECIES
         
         self.z2element_map = {int(k): v for k, v in hdnnp_config.Z2ELEMENT.items()}
@@ -132,7 +133,7 @@ class SymmetryCalculator:
         _cell = cell.detach() if not cell.requires_grad and R.requires_grad else cell
         _inv_cell = torch.inverse(_cell)
 
-        frac_coords = R @ _inv_cell
+        frac_coords = R @ _inv_cell 
         diff_frac_all = frac_coords.unsqueeze(1) - frac_coords.unsqueeze(0)
         diff_frac_all = diff_frac_all - diff_frac_all.round()
         diff_cart_all = diff_frac_all @ _cell
@@ -178,8 +179,8 @@ class SymmetryCalculator:
         # --- G2 対称性関数の計算 (変更なし) ---
         G2_contrib = torch.zeros((N, self.g2_dim_total), device=device, dtype=dtype)
         if num_valid_pairs > 0:
-            g2_eta_dev = self.g2_eta_t.to(device)
-            g2_rs_dev = self.g2_rs_t.to(device)
+            g2_eta_dev = self.g2_eta_t.to(device, dtype=dtype)
+            g2_rs_dev = self.g2_rs_t.to(device, dtype=dtype)
             
             term_g2_radial_parts = torch.exp(
                 -g2_eta_dev.view(1, -1, 1) * \
@@ -197,6 +198,7 @@ class SymmetryCalculator:
             base_param_indices = torch.arange(self.num_g2_base_params, device=device).unsqueeze(0)
             target_g2_columns_for_pairs = expanded_pair_channels * self.num_g2_base_params + base_param_indices
             
+            g2_vals_per_pair_base = g2_vals_per_pair_base.to(dtype=dtype)
             G2_contrib.index_put_(
                 (idx_i.long().unsqueeze(1).expand_as(g2_vals_per_pair_base), target_g2_columns_for_pairs.long()),
                 g2_vals_per_pair_base,
@@ -260,9 +262,9 @@ class SymmetryCalculator:
                     # Step 4: G3値を一括計算
                     sum_sq_dists_triplet = R_ij_triplet.pow(2) + R_ik_triplet.pow(2) + R_jk_sq_triplet
                     
-                    g3_eta_dev = self.g3_eta_t.to(device)
-                    g3_lam_dev = self.g3_lam_t.to(device)
-                    g3_zet_dev = self.g3_zet_t.to(device)
+                    g3_eta_dev = self.g3_eta_t.to(device, dtype=dtype)
+                    g3_lam_dev = self.g3_lam_t.to(device, dtype=dtype)
+                    g3_zet_dev = self.g3_zet_t.to(device, dtype=dtype)
 
                     radial_terms = torch.exp(-g3_eta_dev.view(1, -1) * sum_sq_dists_triplet.view(-1, 1))
                     base_angular = 1.0 + g3_lam_dev.view(1, -1) * cos_theta_ijk.view(-1, 1)
@@ -287,6 +289,7 @@ class SymmetryCalculator:
                     base_g3_param_indices = torch.arange(self.num_g3_base_params, device=device).unsqueeze(0)
                     target_g3_columns_for_triplets = triplet_pair_channels.unsqueeze(1) * self.num_g3_base_params + base_g3_param_indices
                     
+                    g3_vals_per_triplet_base = g3_vals_per_triplet_base.to(dtype=dtype)
                     G3_contrib.index_put_(
                         (triplet_i_idx.long().unsqueeze(1).expand_as(g3_vals_per_triplet_base), target_g3_columns_for_triplets.long()),
                         g3_vals_per_triplet_base,

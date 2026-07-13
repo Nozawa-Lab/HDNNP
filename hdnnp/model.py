@@ -13,6 +13,7 @@ from torch import nn, Tensor
 # config をインポート
 from . import config as hdnnp_config
 
+torch.set_default_dtype(hdnnp_config.DEFAULT_TORCH_DTYPE)
 
 class ElementNN(nn.Module):
     """Element-specific neural network mapping local descriptor to atomic energy."""

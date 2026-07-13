@@ -16,7 +16,7 @@ import torch
 from torch import Tensor #型注釈用
 from torch.utils.data import Dataset, DataLoader
 
-# config は get_dataloader の呼び出し元で参照されるため、ここでは直接インポート不要
+from . import config as hdnnp_config
 
 
 class HDNPDataset(Dataset):
@@ -63,20 +63,20 @@ class HDNPDataset(Dataset):
             # ここでは、後続で問題が起きにくいように、キーを持つが空の可能性のあるデータを返す試み
             # ただし、これは根本的な解決策ではない
             return {
-                'R': torch.empty(0, 3, dtype=torch.float32), 
+                'R': torch.empty(0, 3, dtype=hdnnp_config.DEFAULT_TORCH_DTYPE), 
                 'Z': torch.empty(0, dtype=torch.long),
-                'cell': torch.eye(3, dtype=torch.float32) * 1.0, # ダミーのセル
-                'E': torch.empty(0, dtype=torch.float32), # (0,) or (0,1)
-                'F': torch.empty(0, 3, dtype=torch.float32),
+                'cell': torch.eye(3, dtype=hdnnp_config.DEFAULT_TORCH_DTYPE) * 1.0, # ダミーのセル
+                'E': torch.empty(0, dtype=hdnnp_config.DEFAULT_TORCH_DTYPE), # (0,) or (0,1)
+                'F': torch.empty(0, 3, dtype=hdnnp_config.DEFAULT_TORCH_DTYPE),
                 'N_atoms': torch.tensor(0, dtype=torch.long)
             }
 
 
-        R = torch.from_numpy(data['R']).float()
+        R = torch.from_numpy(data['R']).to(dtype=hdnnp_config.DEFAULT_TORCH_DTYPE)
         Z = torch.from_numpy(data['Z']).long()
-        cell = torch.from_numpy(data['cell']).float()
-        E = torch.from_numpy(data['E']).float().unsqueeze(0) if data['E'].ndim == 0 else torch.from_numpy(data['E']).float()
-        F = torch.from_numpy(data['F']).float()
+        cell = torch.from_numpy(data['cell']).to(dtype=hdnnp_config.DEFAULT_TORCH_DTYPE)
+        E = torch.from_numpy(data['E']).to(dtype=hdnnp_config.DEFAULT_TORCH_DTYPE).unsqueeze(0) if data['E'].ndim == 0 else torch.from_numpy(data['E']).to(dtype=hdnnp_config.DEFAULT_TORCH_DTYPE)
+        F = torch.from_numpy(data['F']).to(dtype=hdnnp_config.DEFAULT_TORCH_DTYPE)
         
         if torch.isnan(F).any():
             print(f"[WARN] NaN found in forces for sample: {self.file_list[idx]}.npz")
@@ -93,11 +93,11 @@ def pad_collate_fn(batch: List[Dict[str, Tensor]]) -> Dict[str, Tensor]:
     if not batch:
         print("[WARN] pad_collate_fn received an empty batch.")
         return {
-            'R': torch.empty(0, 0, 3, dtype=torch.float32), 
+            'R': torch.empty(0, 0, 3, dtype=hdnnp_config.DEFAULT_TORCH_DTYPE), 
             'Z': torch.empty(0, 0, dtype=torch.long),
-            'cell': torch.empty(0, 3, 3, dtype=torch.float32),
-            'E': torch.empty(0, 1, dtype=torch.float32), # (B,1) を想定
-            'F': torch.empty(0, 0, 3, dtype=torch.float32),
+            'cell': torch.empty(0, 3, 3, dtype=hdnnp_config.DEFAULT_TORCH_DTYPE),
+            'E': torch.empty(0, 1, dtype=hdnnp_config.DEFAULT_TORCH_DTYPE), # (B,1) を想定
+            'F': torch.empty(0, 0, 3, dtype=hdnnp_config.DEFAULT_TORCH_DTYPE),
             'N_atoms': torch.empty(0, dtype=torch.long),
             'atom_mask': torch.empty(0, 0, dtype=torch.bool)
         }
@@ -109,11 +109,11 @@ def pad_collate_fn(batch: List[Dict[str, Tensor]]) -> Dict[str, Tensor]:
         print("[WARN] pad_collate_fn: all samples in batch were invalid (e.g., due to missing files).")
         # Return structure expected by DataLoader, but empty
         return {
-            'R': torch.empty(0, 0, 3, dtype=torch.float32), 
+            'R': torch.empty(0, 0, 3, dtype=hdnnp_config.DEFAULT_TORCH_DTYPE), 
             'Z': torch.empty(0, 0, dtype=torch.long),
-            'cell': torch.empty(0, 3, 3, dtype=torch.float32),
-            'E': torch.empty(0, 1, dtype=torch.float32),
-            'F': torch.empty(0, 0, 3, dtype=torch.float32),
+            'cell': torch.empty(0, 3, 3, dtype=hdnnp_config.DEFAULT_TORCH_DTYPE),
+            'E': torch.empty(0, 1, dtype=hdnnp_config.DEFAULT_TORCH_DTYPE),
+            'F': torch.empty(0, 0, 3, dtype=hdnnp_config.DEFAULT_TORCH_DTYPE),
             'N_atoms': torch.empty(0, dtype=torch.long),
             'atom_mask': torch.empty(0, 0, dtype=torch.bool)
         }
@@ -136,7 +136,7 @@ def pad_collate_fn(batch: List[Dict[str, Tensor]]) -> Dict[str, Tensor]:
     batched_N_atoms = [] 
     atom_mask_list = []
 
-    default_dtype_float = batch[0]['R'].dtype if batch else torch.float32
+    default_dtype_float = batch[0]['R'].dtype if batch else hdnnp_config.DEFAULT_TORCH_DTYPE
     default_dtype_long = batch[0]['Z'].dtype if batch else torch.long
     default_dtype_bool = torch.bool
 
