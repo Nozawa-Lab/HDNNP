@@ -1,0 +1,3 @@
+・データ型の指定
+→[export HDNNP_FLOAT_PRECISION=float32 or float64]で指定する。
+ 指定後に、run_extract, (make_splits), run_train, run_infer
