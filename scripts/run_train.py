@@ -251,16 +251,30 @@ def save_config_to_json(config_module, output_path: Path):
         if not key.startswith('__') and not callable(getattr(config_module, key))
     }
     try:
-        # PathオブジェクトなどをJSONシリアライズ可能な型に変換
-        for key, value in config_dict.items():
+        # JSONに直接書き出せないオブジェクトを安全に変換する
+        def to_json_safe(value):
             if isinstance(value, Path):
-                config_dict[key] = str(value)
-            elif isinstance(value, (tuple)): # tupleはjsonではlistになる
-                config_dict[key] = list(value)
-        
+                return str(value)
+            if isinstance(value, (tuple, list)):
+                return [to_json_safe(item) for item in value]
+            if isinstance(value, dict):
+                return {str(k): to_json_safe(v) for k, v in value.items()}
+            if isinstance(value, (str, int, float, bool)) or value is None:
+                return value
+            if hasattr(value, "item") and not isinstance(value, (str, bytes)):
+                try:
+                    return value.item()
+                except Exception:
+                    pass
+            return str(value)
+
+        safe_config_dict = {key: to_json_safe(value) for key, value in config_dict.items()}
+
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(config_dict, f, indent=4)
+        temp_path = output_path.with_suffix(output_path.suffix + ".tmp")
+        with open(temp_path, 'w', encoding='utf-8') as f:
+            json.dump(safe_config_dict, f, indent=4)
+        temp_path.replace(output_path)
         log(f"Saved current configuration to {output_path}")
     except Exception as e:
         log(f"Failed to save configuration: {e}", level="ERROR")

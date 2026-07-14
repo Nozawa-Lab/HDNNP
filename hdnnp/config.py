@@ -10,6 +10,20 @@ from typing import List, Tuple, Any, Dict, Union, Optional
 
 import torch
 
+
+def resolve_torch_dtype(value: Any) -> torch.dtype:
+    """文字列や torch.dtype を受け取り、PyTorch の dtype に変換する。"""
+    if isinstance(value, torch.dtype):
+        return value
+    if isinstance(value, str):
+        normalized = value.lower().strip().replace("torch.", "")
+        if normalized in {"64", "float64", "double"}:
+            return torch.float64
+        if normalized in {"32", "float32", "single"}:
+            return torch.float32
+    raise ValueError(f"Unsupported torch dtype value: {value!r}")
+
+
 # ------------------------------------------------------------------
 # Precision Configuration
 # ------------------------------------------------------------------

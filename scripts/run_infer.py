@@ -68,7 +68,9 @@ def update_config_from_json(config_path: Path):
         log(f"Loading and applying settings from {config_path}")
         for key, value in saved_config.items():
             if hasattr(hdnnp_config, key):
-                if isinstance(getattr(hdnnp_config, key), Path):
+                if key == "DEFAULT_TORCH_DTYPE":
+                    setattr(hdnnp_config, key, hdnnp_config.resolve_torch_dtype(value))
+                elif isinstance(getattr(hdnnp_config, key), Path):
                     setattr(hdnnp_config, key, Path(value))
                 else:
                     setattr(hdnnp_config, key, value)
