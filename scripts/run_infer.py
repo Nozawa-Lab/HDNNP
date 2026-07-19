@@ -69,7 +69,9 @@ def update_config_from_json(config_path: Path):
         for key, value in saved_config.items():
             if hasattr(hdnnp_config, key):
                 if key == "DEFAULT_TORCH_DTYPE":
-                    setattr(hdnnp_config, key, hdnnp_config.resolve_torch_dtype(value))
+                    resolved_dtype = hdnnp_config.resolve_torch_dtype(value)
+                    setattr(hdnnp_config, key, resolved_dtype)
+                    torch.set_default_dtype(resolved_dtype)
                 elif isinstance(getattr(hdnnp_config, key), Path):
                     setattr(hdnnp_config, key, Path(value))
                 else:
@@ -130,13 +132,14 @@ def infer_and_evaluate_optimized(
     all_N_atoms, all_atom_masks = [], []
     
     for batch_idx, data_batch in enumerate(dataloader_eval):
-        R_batch = data_batch['R'].to(device_eval)
-        Z_batch = data_batch['Z'].to(device_eval)
-        cell_batch = data_batch['cell'].to(device_eval)
-        E_true_total = data_batch['E'].squeeze(-1).to(device_eval)
-        F_true_batch = data_batch['F'].to(device_eval)
-        N_atoms_batch = data_batch['N_atoms'].to(device_eval).float()
-        atom_mask_batch = data_batch['atom_mask'].to(device_eval)
+        target_dtype = hdnnp_config.DEFAULT_TORCH_DTYPE
+        R_batch = data_batch['R'].to(device=device_eval, dtype=target_dtype)
+        Z_batch = data_batch['Z'].to(device=device_eval)
+        cell_batch = data_batch['cell'].to(device=device_eval, dtype=target_dtype)
+        E_true_total = data_batch['E'].squeeze(-1).to(device=device_eval, dtype=target_dtype)
+        F_true_batch = data_batch['F'].to(device=device_eval, dtype=target_dtype)
+        N_atoms_batch = data_batch['N_atoms'].to(device=device_eval).float()
+        atom_mask_batch = data_batch['atom_mask'].to(device=device_eval)
         B, N_max_batch, _ = R_batch.shape
         if B == 0: continue
         
@@ -149,7 +152,7 @@ def infer_and_evaluate_optimized(
                 if n_atoms_i == 0:
                     E_pred_total_list.append(torch.tensor(0.0, device=device_eval, dtype=R_batch.dtype))
                     continue
-                Gi = sym_calc_eval.compute(R_batch[i, :n_atoms_i], Z_batch[i, :n_atoms_i], cell_batch[i])
+                Gi = sym_calc_eval.compute(R_batch[i, :n_atoms_i], Z_batch[i, :n_atoms_i], cell_batch[i]).to(dtype=target_dtype)
                 
                 # ▼▼▼ 修正箇所: 外挿検知ログをさらに詳細化 ▼▼▼
                 if g_min is not None and g_max is not None:
@@ -312,6 +315,7 @@ def main():
     log(f"Loading trained model from: {TRAINED_MODEL_PATH}")
     model = HDNNPModel(INPUT_DIM).to(DEVICE)
     model.load_state_dict(torch.load(TRAINED_MODEL_PATH, map_location=DEVICE))
+    model = model.to(dtype=hdnnp_config.DEFAULT_TORCH_DTYPE)
     log("Trained model loaded successfully.")
 
     results_summary = {}
