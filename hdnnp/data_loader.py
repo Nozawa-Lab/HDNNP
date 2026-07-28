@@ -68,7 +68,8 @@ class HDNPDataset(Dataset):
                 'cell': torch.eye(3, dtype=hdnnp_config.DEFAULT_TORCH_DTYPE) * 1.0, # ダミーのセル
                 'E': torch.empty(0, dtype=hdnnp_config.DEFAULT_TORCH_DTYPE), # (0,) or (0,1)
                 'F': torch.empty(0, 3, dtype=hdnnp_config.DEFAULT_TORCH_DTYPE),
-                'N_atoms': torch.tensor(0, dtype=torch.long)
+                'N_atoms': torch.tensor(0, dtype=torch.long),
+                'sample_id': self.file_list[idx] if idx < len(self.file_list) else ""
             }
 
 
@@ -83,7 +84,7 @@ class HDNPDataset(Dataset):
 
         N_atoms = torch.tensor(R.shape[0], dtype=torch.long)
 
-        return {'R': R, 'Z': Z, 'cell': cell, 'E': E, 'F': F, 'N_atoms': N_atoms}
+        return {'R': R, 'Z': Z, 'cell': cell, 'E': E, 'F': F, 'N_atoms': N_atoms, 'sample_id': self.file_list[idx]}
 
 
 def pad_collate_fn(batch: List[Dict[str, Tensor]]) -> Dict[str, Tensor]:
@@ -115,7 +116,8 @@ def pad_collate_fn(batch: List[Dict[str, Tensor]]) -> Dict[str, Tensor]:
             'E': torch.empty(0, 1, dtype=hdnnp_config.DEFAULT_TORCH_DTYPE),
             'F': torch.empty(0, 0, 3, dtype=hdnnp_config.DEFAULT_TORCH_DTYPE),
             'N_atoms': torch.empty(0, dtype=torch.long),
-            'atom_mask': torch.empty(0, 0, dtype=torch.bool)
+            'atom_mask': torch.empty(0, 0, dtype=torch.bool),
+            'sample_id': []
         }
     batch = valid_batch
 
@@ -170,7 +172,8 @@ def pad_collate_fn(batch: List[Dict[str, Tensor]]) -> Dict[str, Tensor]:
         'E': torch.stack(batched_E, dim=0),
         'F': torch.stack(batched_F, dim=0),
         'N_atoms': torch.stack(batched_N_atoms, dim=0),
-        'atom_mask': torch.stack(atom_mask_list, dim=0)
+        'atom_mask': torch.stack(atom_mask_list, dim=0),
+        'sample_id': [sample.get('sample_id', '') for sample in batch]
     }
     return collated_batch
 
