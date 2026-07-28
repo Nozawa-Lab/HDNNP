@@ -13,6 +13,7 @@ from torch import nn, Tensor
 # config をインポート
 from . import config as hdnnp_config
 
+# Keep the default dtype aligned with the configured precision.
 torch.set_default_dtype(hdnnp_config.DEFAULT_TORCH_DTYPE)
 
 class ElementNN(nn.Module):
@@ -27,7 +28,7 @@ class ElementNN(nn.Module):
         prev_dim = input_dim
         # config から隠れ層の定義を読み込む
         for hidden_dim in hdnnp_config.HIDDEN_LAYERS:
-            layers.append(nn.Linear(prev_dim, hidden_dim))
+            layers.append(nn.Linear(prev_dim, hidden_dim, dtype=hdnnp_config.DEFAULT_TORCH_DTYPE))
             layers.append(nn.Tanh())
             # ▼▼▼ 修正箇所 ▼▼▼
             # configに基づいてDropout層を追加
@@ -35,17 +36,17 @@ class ElementNN(nn.Module):
                 layers.append(nn.Dropout(hdnnp_config.DROPOUT_RATE))
             # ▲▲▲ 修正箇所 ▲▲▲
             prev_dim = hidden_dim
-        layers.append(nn.Linear(prev_dim, 1))
-        self.net = nn.Sequential(*layers)
+        layers.append(nn.Linear(prev_dim, 1, dtype=hdnnp_config.DEFAULT_TORCH_DTYPE))
+        self.net = nn.Sequential(*layers) #self.netがElementNNのネットワーク全体を表す
 
     def forward(self, x: Tensor) -> Tensor:
         """
         Args:
-            x (Tensor): descriptor tensor, shape (n_atoms, n_features)
+            x (Tensor): 対称性関数テンソルG, shape (n_atoms, n_features)
         Returns:
             Tensor: per-atom energy, shape (n_atoms,)
         """
-        return self.net(x).squeeze(-1)
+        return self.net(x).squeeze(-1) #各原子のエネルギーをまとめたテンソルになる。(n_atoms,)の形状。
 
 
 class HDNNPModel(nn.Module):
@@ -76,19 +77,20 @@ class HDNNPModel(nn.Module):
             Tensor: per-atom energies, shape (N,)
         """
         device = G.device
+        dtype = G.dtype if G.is_floating_point() else hdnnp_config.DEFAULT_TORCH_DTYPE
         N = G.size(0)
-        E_atoms = torch.zeros(N, device=device, dtype=G.dtype)
+        E_atoms = torch.zeros(N, device=device, dtype=dtype)
         for z_val, element_symbol in self.z2element.items(): # z2element.items() を使用
             # Ensure z_val is an int for comparison if Z contains float representations
             mask = (Z.long() == int(z_val)) # Zをlongにキャストして比較
             if torch.any(mask):
-                idx = torch.nonzero(mask, as_tuple=True)[0]
-                G_sel = G[idx]
+                idx = torch.nonzero(mask, as_tuple=True)[0] #nonzeroの結果(現在のループで対象としている原子のインデックス)をタプルで取得
+                G_sel = G[idx].to(dtype=dtype) #
                 # ElementNNのキーもelement_symbolであることを確認
                 if element_symbol in self.element_nns:
-                    E_sel = self.element_nns[element_symbol](G_sel)
-                    E_atoms[idx] = E_sel
+                    E_sel = self.element_nns[element_symbol](G_sel) #対象とする原子
+                    E_atoms[idx] = E_sel.to(dtype=dtype)
                 else:
                     # このケースは通常発生しないはず (SPECIESとZ2ELEMENTが対応していれば)
                     print(f"Warning: Element symbol '{element_symbol}' for Z={z_val} not found in ElementNNs.")
-        return E_atoms
+        return E_atoms #系の全ての原子のエネルギーをまとめたテンソル
