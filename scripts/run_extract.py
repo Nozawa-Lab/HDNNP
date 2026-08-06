@@ -10,7 +10,7 @@ import re
 import sys
 import os
 from pathlib import Path
-from typing import Union, List, Tuple, Optional # List, Tuple, Optional を追加
+from typing import Union, List, Tuple, Optional, Any # List, Tuple, Optional, Any を追加
 import torch
 
 import numpy as np
@@ -87,25 +87,108 @@ def parse_energies(osz_path: Path) -> list[float]:
 # --------------------------------------------------------------------
 # XDATCAR → cell, Z, list[fractional‑coords]
 # --------------------------------------------------------------------
-def parse_xdatcar(xdat_path: Path) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], List[np.ndarray]]:
-    """XDATCAR を読み込み (cell, Z_np, frac_frames) を返す。失敗時は (None, None, [])"""
+def _try_parse_numeric_tokens(line: str) -> Optional[List[float]]: 
+    """空白区切り数値行をパース。失敗時は None を返す。指定した行をリストに変換する。"""
+    parts = line.split() #読み込んだ行を空白で分割
+    if not parts:
+        return None
+    try:
+        return [float(p.replace('D', 'E')) for p in parts]
+    except ValueError:
+        return None
+
+
+def _try_extract_cell_before_marker(
+    lines: List[str], #文字列のリスト(ファイルの各行)
+    marker_idx: int,
+    default_dtype: np.dtype,
+) -> Optional[np.ndarray]:
+    """
+    VASP NPT XDATCAR の各フレームヘッダ直前にある繰り返しヘッダからセルを抽出する。基本はこれ。
+    形式: system_name / scale / cell_a / cell_b / cell_c / species / counts / Direct configuration=
+    """
+    if marker_idx < 5:
+        return None
+    vec1 = _try_parse_numeric_tokens(lines[marker_idx - 5]) 
+    vec2 = _try_parse_numeric_tokens(lines[marker_idx - 4]) 
+    vec3 = _try_parse_numeric_tokens(lines[marker_idx - 3])
+    if not vec1 or not vec2 or not vec3:
+        return None
+    if len(vec1) != 3 or len(vec2) != 3 or len(vec3) != 3:
+        return None
+
+    scale = 1.0
+    if marker_idx >= 6:
+        maybe_scale = _try_parse_numeric_tokens(lines[marker_idx - 6])
+        if maybe_scale and len(maybe_scale) == 1:
+            scale = maybe_scale[0]
+
+    candidate = np.array([vec1, vec2, vec3], dtype=default_dtype) * scale
+    # セルベクトルは Å 単位なので 1.2 超であることを確認
+    if np.any(np.abs(candidate) > 1.2): #この判定はあやしい。
+        return candidate
+    return None
+
+
+def _extract_frame_cell_if_present(
+    lines: List[str], #文字列のリスト(ファイルの各行)
+    start_idx: int, #開始インデックス
+    default_dtype: np.dtype, 
+    is_direct_coords: bool,
+) -> Tuple[Optional[np.ndarray], int]:
+    """
+    VASP以外のファイルに対応。基本的に使用しない。フレームヘッダ直後に可変セル情報がある場合に抽出する。
+    戻り値: (frame_cell or None, coords_start_idx)
+    """
+    if start_idx >= len(lines): #start_idxがlinesの長さ以上の場合はNoneとstart_idxを返す
+        return None, start_idx
+
+    idx = start_idx
+
+    if idx + 2 >= len(lines):
+        return None, start_idx
+
+    vec1 = _try_parse_numeric_tokens(lines[idx])
+    vec2 = _try_parse_numeric_tokens(lines[idx + 1])
+    vec3 = _try_parse_numeric_tokens(lines[idx + 2])
+    if not vec1 or not vec2 or not vec3:
+        return None, start_idx
+    if len(vec1) != 3 or len(vec2) != 3 or len(vec3) != 3:
+        return None, start_idx
+
+    candidate_cell = np.array(
+        [vec1, vec2, vec3],
+        dtype=default_dtype,
+    )
+
+    # VASP NPT の XDATCAR はフレームヘッダ直後にセルベクトル3行が続く。
+    # Direct 座標は 0..1 に収まるため、1.2 Å を超える成分があればセル行列とみなす。
+    if is_direct_coords and np.any(np.abs(candidate_cell) > 1.2):
+        return candidate_cell, idx + 3
+
+    return None, start_idx
+
+
+def parse_xdatcar(xdat_path: Path) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], List[np.ndarray], List[np.ndarray]]:
+    """XDATCAR を読み込み (base_cell, Z_np, frac_frames, frame_cells) を返す。失敗時は (None, None, [], [])"""
     if not xdat_path.exists():
         print(f"[ERROR][XDATCAR] File not found: {xdat_path}", file=sys.stderr)
-        return None, None, []
+        return None, None, [], []
 
     lines = [l.rstrip() for l in xdat_path.read_text().splitlines()]
     if len(lines) < 8:
         print(f"[ERROR][XDATCAR] File is too short (less than 7 lines): {xdat_path}", file=sys.stderr)
-        return None, None, []
+        return None, None, [], []
 
     try:
         scale_factor_str = lines[1].split()
         if not scale_factor_str: raise ValueError("Scale factor line is empty.")
         scale_factor = float(scale_factor_str[0])
         
-        cell_lines = [lines[i].split() for i in (2, 3, 4)]
+        cell_lines = [lines[i].split() for i in (2, 3, 4)] #第一フレームにおけるセルベクトル3行を取得
         if not all(len(cl) == 3 for cl in cell_lines): raise ValueError("Cell matrix lines are malformed.")
-        cell = np.array([[float(c) for c in cl] for cl in cell_lines], dtype=np.float32 if hdnnp_config.DEFAULT_TORCH_DTYPE == torch.float32 else np.float64) * scale_factor
+        default_np_dtype = np.float32 if hdnnp_config.DEFAULT_TORCH_DTYPE == torch.float32 else np.float64
+        cell = np.array([[float(c) for c in cl] for cl in cell_lines], dtype=default_np_dtype) * scale_factor #first cell
         
         species_symbols = lines[5].split()
         atom_counts_str = lines[6].split()
@@ -127,14 +210,15 @@ def parse_xdatcar(xdat_path: Path) -> Tuple[Optional[np.ndarray], Optional[np.nd
 
     except (ValueError, IndexError) as e:
         print(f"[ERROR][XDATCAR] Error parsing header of {xdat_path}: {e}", file=sys.stderr)
-        return None, None, []
+        return None, None, [], []
 
     N_atoms_from_header = sum(atom_counts)
     if N_atoms_from_header == 0:
         print(f"[ERROR][XDATCAR] Zero atoms specified in header of {xdat_path}", file=sys.stderr)
-        return cell, Z_np, [] # Z_np を返す
+        return cell, Z_np, [], [] # Z_np を返す
 
-    frac_frames: List[np.ndarray] = []
+    frac_frames: List[np.ndarray] = [] #フレームごとの分数座標を格納するリスト
+    frame_cells: List[np.ndarray] = [] #フレームごとのセルを格納するリスト
     current_line_idx = 7
     frame_count = 0
     while current_line_idx < len(lines):
@@ -143,7 +227,20 @@ def parse_xdatcar(xdat_path: Path) -> Tuple[Optional[np.ndarray], Optional[np.nd
         if line_content.lower().startswith("direct configuration=") or \
            line_content.lower().startswith("cartesian configuration="):
             frame_count += 1
+            is_direct_coords = line_content.lower().startswith("direct configuration=")
             coord_block_start = current_line_idx + 1
+
+            # まずマーカー前の繰り返しヘッダからセルを探す（VASP NPT 形式）
+            frame_cell = _try_extract_cell_before_marker(
+                lines, current_line_idx, default_np_dtype,
+            )
+            if frame_cell is None:
+                # 次にマーカー後のセル行を探す（別フォーマット対応）XDATCARであれば、問題ない。
+                frame_cell, coord_block_start = _extract_frame_cell_if_present(
+                    lines, coord_block_start, default_np_dtype, is_direct_coords,
+                ) 
+            if frame_cell is None: #それでも読み込めない場合、first cellを使用する。
+                frame_cell = cell
             coord_block_end = coord_block_start + N_atoms_from_header
             if coord_block_end > len(lines):
                 print(f"[WARN] [XDATCAR] Incomplete coordinate block for frame {frame_count} in {xdat_path}. Expected {N_atoms_from_header} atoms, found less. Stopping frame parsing.", file=sys.stderr)
@@ -154,9 +251,11 @@ def parse_xdatcar(xdat_path: Path) -> Tuple[Optional[np.ndarray], Optional[np.nd
                 # 各行が少なくとも3つの要素を持っているか確認
                 if not all(len(fcs) >= 3 for fcs in frame_coords_str_list):
                     raise ValueError("Coordinate line has less than 3 elements.")
-                
-                frame_coords_str = [fcs[:3] for fcs in frame_coords_str_list] # 最初の3要素のみ取得
-                frame_coords = np.array(frame_coords_str, dtype=np.float32 if hdnnp_config.DEFAULT_TORCH_DTYPE == torch.float32 else np.float64)
+
+                frame_coords = np.array(
+                    [fcs[:3] for fcs in frame_coords_str_list],  # 最初の3要素のみ取得(selective dynamicsがある場合、TやFを取り除き、座標の情報だけにする)
+                    dtype=np.float32 if hdnnp_config.DEFAULT_TORCH_DTYPE == torch.float32 else np.float64,
+                )
 
 
                 if frame_coords.shape != (N_atoms_from_header, 3):
@@ -164,6 +263,7 @@ def parse_xdatcar(xdat_path: Path) -> Tuple[Optional[np.ndarray], Optional[np.nd
                     current_line_idx = coord_block_end 
                     continue
                 frac_frames.append(frame_coords)
+                frame_cells.append(frame_cell)
                 current_line_idx = coord_block_end
             except ValueError as e:
                 print(f"[WARN] [XDATCAR] Error parsing coordinates for frame {frame_count} in {xdat_path}: {e}. Skipping frame.", file=sys.stderr)
@@ -175,7 +275,7 @@ def parse_xdatcar(xdat_path: Path) -> Tuple[Optional[np.ndarray], Optional[np.nd
     if not frac_frames:
         print(f"[INFO] [XDATCAR] No valid coordinate frames found in {xdat_path}")
 
-    return cell, Z_np, frac_frames # Z_np を返す
+    return cell, Z_np, frac_frames, frame_cells # Z_np と frame_cells を返す
 
 
 # --------------------------------------------------------------------
@@ -269,7 +369,7 @@ def extract_case(case_dir: Path, out_dir: Path, raw_dir_base: Path, npz_format: 
         print(f"[FAIL] {name_prefix}: OUTCAR not found. Skipping.", file=sys.stderr)
         return
 
-    cell, Z_atoms, frac_frames = parse_xdatcar(xdatcar_path) # Z_atoms に変更
+    cell, Z_atoms, frac_frames, frame_cells = parse_xdatcar(xdatcar_path) # Z_atoms に変更
     if cell is None or Z_atoms is None: # parse_xdatcar が失敗した場合
         print(f"[FAIL] {name_prefix}: Critical error parsing XDATCAR. Skipping.", file=sys.stderr)
         return
@@ -358,6 +458,7 @@ def extract_case(case_dir: Path, out_dir: Path, raw_dir_base: Path, npz_format: 
         return
     
     frac_frames = frac_frames[:T]
+    frame_cells = frame_cells[:T]
     E_list = E_list[:T]
     if traj_outcar: 
         traj_outcar = traj_outcar[:T]
@@ -373,7 +474,8 @@ def extract_case(case_dir: Path, out_dir: Path, raw_dir_base: Path, npz_format: 
             print(f"[WARN] {name_prefix}: Final manual force parse failed. Forces will be NaN.")
 
     for i in range(T):
-        R_cartesian = (frac_frames[i] @ cell).astype(np.float32 if hdnnp_config.DEFAULT_TORCH_DTYPE == torch.float32 else np.float64) # cell は XDATCAR から取得したものを使い続ける
+        cell_i = frame_cells[i] if i < len(frame_cells) else cell
+        R_cartesian = (frac_frames[i] @ cell_i).astype(np.float32 if hdnnp_config.DEFAULT_TORCH_DTYPE == torch.float32 else np.float64)
         E_total = np.array(E_list[i], dtype=np.float32 if hdnnp_config.DEFAULT_TORCH_DTYPE == torch.float32 else np.float64)
         current_Z_frame = Z_atoms # XDATCAR から取得した Z_atoms を使用
         F_cartesian = np.full((N_atoms, 3), np.nan, dtype=np.float32 if hdnnp_config.DEFAULT_TORCH_DTYPE == torch.float32 else np.float64) 
@@ -408,7 +510,7 @@ def extract_case(case_dir: Path, out_dir: Path, raw_dir_base: Path, npz_format: 
         npz_filename = npz_format.format(prefix=name_prefix, frame_num=i)
         npz_path = out_dir / npz_filename
         try:
-            np.savez_compressed(npz_path, R=R_cartesian, Z=current_Z_frame, cell=cell, E=E_total, F=F_cartesian)
+            np.savez_compressed(npz_path, R=R_cartesian, Z=current_Z_frame, cell=cell_i, E=E_total, F=F_cartesian)
             if (i < 3 and saved_frames_count < 3) or (i > 0 and i % 50 == 0 and i < T -1) or i == T-1 : # ログ出力を調整
                  print(f"  saved => {npz_path.name}")
             saved_frames_count += 1
