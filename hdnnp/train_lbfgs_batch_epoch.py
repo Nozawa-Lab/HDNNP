@@ -88,6 +88,24 @@ def _build_dataloader_for_epoch(dataloader: DataLoader) -> DataLoader:
     )
 
 
+def _compute_energy_loss(
+    e_pred_batch: Tensor,
+    e_true_batch: Tensor,
+    n_atoms_batch: Tensor,
+    normalize_per_atom: bool = False,
+) -> Tensor:
+    """エネルギー損失を計算する。"""
+    if normalize_per_atom:
+        n_atoms_safe = n_atoms_batch.to(dtype=e_pred_batch.dtype).clamp_min(1.0)
+        e_pred_for_loss = e_pred_batch / n_atoms_safe
+        e_true_for_loss = e_true_batch / n_atoms_safe
+    else:
+        e_pred_for_loss = e_pred_batch
+        e_true_for_loss = e_true_batch
+
+    return torch.mean((e_pred_for_loss - e_true_for_loss) ** 2)
+
+
 def _compute_batch_loss_and_predictions(
     batch_data: Dict[str, Tensor],
     model: torch.nn.Module,
@@ -119,8 +137,12 @@ def _compute_batch_loss_and_predictions(
         E_pred_samples_list.append(Ei_atoms.sum()) #各構造の全エネルギーをまとめたリスト
 
     E_pred_batch_for_loss = torch.stack(E_pred_samples_list)
-    #energy_loss_val = torch.mean((E_pred_batch_for_loss - E_true_batch) ** 2) #迫田さんverの損失関数
-    energy_loss_val = torch.mean((E_pred_batch_for_loss/102 - E_true_batch/102) ** 2) #猿谷さんverの損失関数。
+    energy_loss_val = _compute_energy_loss(
+        e_pred_batch=E_pred_batch_for_loss,
+        e_true_batch=E_true_batch,
+        n_atoms_batch=N_atoms_batch,
+        normalize_per_atom=hdnnp_config.ENERGY_LOSS_NORMALIZE_PER_ATOM,
+    )
     loss = hdnnp_config.LOSS_ALPHA_E * energy_loss_val
 
     F_pred_padded_for_loss = torch.zeros_like(R_local_for_grad)

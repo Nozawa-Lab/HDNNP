@@ -53,6 +53,10 @@ except Exception as e:
     log(f"Could not set PyTorch thread count automatically. Error: {e}", level="WARN")
 
 from hdnnp.data_loader import get_dataloader
+# 既存の学習ループ
+# from hdnnp.train import train
+# 新しいバッチ対応版の学習ループ
+from hdnnp.train_lbfgs_batch_epoch import train_lbfgs_batch_epoch
 from hdnnp.train import train
 from hdnnp.symmetry_calculator import SymmetryCalculator
 from hdnnp.model import HDNNPModel
@@ -348,8 +352,9 @@ def main():
 
     log("Loading training data...")
     is_lbfgs = hdnnp_config.OPTIMIZER_NAME.lower() == "lbfgs"
-    train_batch_size = n_train if is_lbfgs else hdnnp_config.DATALOADER_TRAIN_BATCH_SIZE
-    log(f"Using training batch size: {train_batch_size}")
+    use_batch_training = is_lbfgs and hdnnp_config.DATALOADER_TRAIN_BATCH_SIZE < n_train
+    train_batch_size = max(1, min(hdnnp_config.DATALOADER_TRAIN_BATCH_SIZE, n_train)) if use_batch_training else (n_train if is_lbfgs else hdnnp_config.DATALOADER_TRAIN_BATCH_SIZE)
+    log(f"Using training batch size: {train_batch_size} (batch training enabled: {use_batch_training})")
 
     train_loader_full_no_shuffle = get_dataloader(
         splits_json=SPLITS_JSON,
@@ -366,7 +371,7 @@ def main():
         processed_dir=TRAIN_DIR,
         split='train',
         batch_size=train_batch_size,
-        shuffle=hdnnp_config.DATALOADER_SHUFFLE_TRAIN and not is_lbfgs,
+        shuffle=hdnnp_config.DATALOADER_SHUFFLE_TRAIN or is_lbfgs,
         num_workers=hdnnp_config.DATALOADER_NUM_WORKERS,
         pin_memory=(DEVICE.type == 'cuda' and hdnnp_config.DATALOADER_PIN_MEMORY)
     )
@@ -391,13 +396,34 @@ def main():
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
 
     training_start_time = time.time()
-    model_trained, loss_hist, rmse_E_hist, rmse_F_hist = train(
-        dataloader=train_loader,
-        model=model,
-        sym_calc=sym_calc,
-        device=DEVICE,
-        log_file_path=log_file_path
-    )
+
+    training_loop_name = hdnnp_config.TRAINING_LOOP.lower().strip()
+    if training_loop_name in {"train_lbfgs_batch_epoch", "batch_epoch", "lbfgs_batch_epoch"}:
+        use_batch_training = True
+    elif training_loop_name in {"train", "standard"}:
+        use_batch_training = False
+    else:
+        raise ValueError(f"Unsupported TRAINING_LOOP: {hdnnp_config.TRAINING_LOOP}")
+
+    if use_batch_training:
+        log(f"Using epoch-based batch L-BFGS trainer from hdnnp.train_lbfgs_batch_epoch. (config: {hdnnp_config.TRAINING_LOOP})")
+        model_trained, loss_hist, rmse_E_hist, rmse_F_hist = train_lbfgs_batch_epoch(
+            dataloader=train_loader,
+            model=model,
+            sym_calc=sym_calc,
+            device=DEVICE,
+            log_file_path=log_file_path,
+            batch_size=train_batch_size,
+        )
+    else:
+        log(f"Using standard trainer from hdnnp.train. (config: {hdnnp_config.TRAINING_LOOP})")
+        model_trained, loss_hist, rmse_E_hist, rmse_F_hist = train(
+            dataloader=train_loader,
+            model=model,
+            sym_calc=sym_calc,
+            device=DEVICE,
+            log_file_path=log_file_path
+        )
     training_duration = time.time() - training_start_time
     log(f"Training completed in {training_duration:.2f} seconds. Ran for {len(loss_hist)} iterations.")
 

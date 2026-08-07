@@ -86,6 +86,28 @@ class EarlyStopper:
         return self.early_stop
 
 
+def _compute_energy_loss(
+    e_pred_batch: Tensor,
+    e_true_batch: Tensor,
+    n_atoms_batch: Tensor,
+    normalize_per_atom: bool = False,
+) -> Tensor:
+    """
+    エネルギー損失を計算する。
+    normalize_per_atom=True の場合は各系の原子数で割って 1 原子あたりの誤差として扱う。
+    原子数が 0 の系が混在していても、0 除算を避けるため 1 以上にクランプする。
+    """
+    if normalize_per_atom:
+        n_atoms_safe = n_atoms_batch.to(dtype=e_pred_batch.dtype).clamp_min(1.0)
+        e_pred_for_loss = e_pred_batch / n_atoms_safe
+        e_true_for_loss = e_true_batch / n_atoms_safe
+    else:
+        e_pred_for_loss = e_pred_batch
+        e_true_for_loss = e_true_batch
+
+    return torch.mean((e_pred_for_loss - e_true_for_loss) ** 2)
+
+
 def train(
     dataloader: DataLoader,
     model: torch.nn.Module,
@@ -197,7 +219,12 @@ def train(
                             E_pred_samples_list_closure.append(Ei_atoms.sum())
 
                         E_pred_batch_for_loss = torch.stack(E_pred_samples_list_closure)
-                        energy_loss_val = torch.mean((E_pred_batch_for_loss - E_true_batch)**2)
+                        energy_loss_val = _compute_energy_loss(
+                            e_pred_batch=E_pred_batch_for_loss,
+                            e_true_batch=E_true_batch,
+                            n_atoms_batch=N_atoms_batch,
+                            normalize_per_atom=hdnnp_config.ENERGY_LOSS_NORMALIZE_PER_ATOM,
+                        )
                         loss = hdnnp_config.LOSS_ALPHA_E * energy_loss_val
                         
                         F_pred_padded_closure = torch.zeros_like(R_closure_grad)
@@ -249,7 +276,12 @@ def train(
                         E_pred_samples_list.append(Ei_atoms.sum())
                     
                     E_pred_batch_for_loss = torch.stack(E_pred_samples_list)
-                    energy_loss_val = torch.mean((E_pred_batch_for_loss - E_true_batch)**2)
+                    energy_loss_val = _compute_energy_loss(
+                        e_pred_batch=E_pred_batch_for_loss,
+                        e_true_batch=E_true_batch,
+                        n_atoms_batch=N_atoms_batch,
+                        normalize_per_atom=hdnnp_config.ENERGY_LOSS_NORMALIZE_PER_ATOM,
+                    )
                     loss = hdnnp_config.LOSS_ALPHA_E * energy_loss_val
                     
                     F_pred_padded_for_loss = torch.zeros_like(R_local_for_grad)
@@ -296,6 +328,7 @@ def train(
                         E_true_per_atom = E_true_batch[valid_samples_mask_e] / N_atoms_valid
                         if E_pred_per_atom.numel() > 0:
                             rmse_tensor = torch.sqrt(torch.mean((E_pred_per_atom - E_true_per_atom)**2))
+                            #rmse_tensor = torch.sqrt(torch.mean((E_pred_per_atom/102 - E_true_per_atom/102)**2))
                             current_rmse_E_pa_val = rmse_tensor.item()
                     
                     if hdnnp_config.USE_FORCE_TRAINING:
