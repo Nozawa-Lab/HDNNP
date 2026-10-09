@@ -242,7 +242,7 @@ def evaluate(
             total_sum_sq_force_error = masked_force_error_sq_components.sum()
             num_total_actual_atoms = atom_mask_batch.sum().float()
             if num_total_actual_atoms > 0:
-                rmse_F_pa = torch.sqrt(total_sum_sq_force_error / num_total_actual_atoms)
+                rmse_F_pa = torch.sqrt(total_sum_sq_force_error / num_total_actual_atoms) # RMSE per atom for forces
 
     log(f"Evaluation completed in {time.time() - eval_start_time:.2f} seconds")
     return rmse_E_pa, rmse_F_pa, E_true_pa_for_plot.cpu(), E_pred_pa_for_plot.cpu()
@@ -350,10 +350,21 @@ def main():
     n_train = len(splits['train'])
     log(f"Train samples: {n_train}")
 
+    # Decide the training mode before constructing the DataLoader.  The
+    # standard trainer consumes a single batch for all iterations, so it must
+    # always receive the complete training set.  Only the epoch-based trainer
+    # is allowed to use the configured mini-batch size.
+    training_loop_name = hdnnp_config.TRAINING_LOOP.lower().strip()
+    if training_loop_name in {"train_lbfgs_batch_epoch", "batch_epoch", "lbfgs_batch_epoch"}:
+        use_batch_training = True
+        train_batch_size = max(1, min(hdnnp_config.DATALOADER_TRAIN_BATCH_SIZE, n_train))
+    elif training_loop_name in {"train", "standard"}:
+        use_batch_training = False
+        train_batch_size = n_train
+    else:
+        raise ValueError(f"Unsupported TRAINING_LOOP: {hdnnp_config.TRAINING_LOOP}")
+
     log("Loading training data...")
-    is_lbfgs = hdnnp_config.OPTIMIZER_NAME.lower() == "lbfgs"
-    use_batch_training = is_lbfgs and hdnnp_config.DATALOADER_TRAIN_BATCH_SIZE < n_train
-    train_batch_size = max(1, min(hdnnp_config.DATALOADER_TRAIN_BATCH_SIZE, n_train)) if use_batch_training else (n_train if is_lbfgs else hdnnp_config.DATALOADER_TRAIN_BATCH_SIZE)
     log(f"Using training batch size: {train_batch_size} (batch training enabled: {use_batch_training})")
 
     train_loader_full_no_shuffle = get_dataloader(
@@ -371,7 +382,7 @@ def main():
         processed_dir=TRAIN_DIR,
         split='train',
         batch_size=train_batch_size,
-        shuffle=hdnnp_config.DATALOADER_SHUFFLE_TRAIN or is_lbfgs,
+        shuffle=hdnnp_config.DATALOADER_SHUFFLE_TRAIN if use_batch_training else False,
         num_workers=hdnnp_config.DATALOADER_NUM_WORKERS,
         pin_memory=(DEVICE.type == 'cuda' and hdnnp_config.DATALOADER_PIN_MEMORY)
     )
@@ -396,14 +407,6 @@ def main():
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
 
     training_start_time = time.time()
-
-    training_loop_name = hdnnp_config.TRAINING_LOOP.lower().strip()
-    if training_loop_name in {"train_lbfgs_batch_epoch", "batch_epoch", "lbfgs_batch_epoch"}:
-        use_batch_training = True
-    elif training_loop_name in {"train", "standard"}:
-        use_batch_training = False
-    else:
-        raise ValueError(f"Unsupported TRAINING_LOOP: {hdnnp_config.TRAINING_LOOP}")
 
     if use_batch_training:
         log(f"Using epoch-based batch L-BFGS trainer from hdnnp.train_lbfgs_batch_epoch. (config: {hdnnp_config.TRAINING_LOOP})")
