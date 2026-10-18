@@ -12,7 +12,6 @@ import math
 import torch
 from torch import Tensor
 from typing import Tuple, List, Dict
-import sys
 
 # config をインポート
 from . import config as hdnnp_config
@@ -53,6 +52,8 @@ def _get_species_indices(Z: Tensor, species_map: Dict[str, int], z2element_map: 
 
 # --- Main SymmetryCalculator Class ---
 class SymmetryCalculator:
+    _G3_TRIPLET_CHUNK_SIZE = 32_768
+
     def __init__(self) -> None:
         """
         SymmetryCalculator の初期化。
@@ -130,21 +131,19 @@ class SymmetryCalculator:
             empty_float_3d = torch.empty(0, 3, dtype=R.dtype, device=device)
             return empty_long, empty_long, empty_float, empty_float_3d, empty_float
         
-        _cell = cell.detach() if not cell.requires_grad and R.requires_grad else cell
-        _inv_cell = torch.inverse(_cell)
-
-        frac_coords = R @ _inv_cell 
-        diff_frac_all = frac_coords.unsqueeze(1) - frac_coords.unsqueeze(0)
-        diff_frac_all = diff_frac_all - diff_frac_all.round()
-        diff_cart_all = diff_frac_all @ _cell
-
-        dists_sq_all = torch.sum(diff_cart_all.pow(2), dim=2)
-        
-        diag_indices = torch.arange(N, device=device)
-        dists_sq_all[diag_indices, diag_indices] = (self.r_cut + 1.0)**2
-        
-        adj = dists_sq_all < (self.r_cut**2)
-        idx_i, idx_j = torch.where(adj)
+        # 近傍の採否は微分できないため、N x N の探索テンソルを計算グラフに
+        # 保持しない。選択されたペアだけを後段で再計算して微分対象にする。
+        with torch.no_grad():
+            cell_search = cell.detach()
+            frac_coords = R.detach() @ torch.inverse(cell_search)
+            diff_frac_all = frac_coords.unsqueeze(1) - frac_coords.unsqueeze(0)
+            image_shifts_all = diff_frac_all.round()
+            diff_frac_all.sub_(image_shifts_all)
+            dists_sq_all = torch.sum((diff_frac_all @ cell_search).square(), dim=2)
+            dists_sq_all.fill_diagonal_((self.r_cut + 1.0) ** 2)
+            idx_i, idx_j = torch.where(dists_sq_all < self.r_cut ** 2)
+            image_shifts_ij = image_shifts_all[idx_i, idx_j]
+        del frac_coords, diff_frac_all, image_shifts_all, dists_sq_all # メモリ解放
 
         if idx_i.numel() == 0:
             empty_long = torch.empty(0, dtype=torch.long, device=device)
@@ -152,12 +151,43 @@ class SymmetryCalculator:
             empty_float_3d = torch.empty(0, 3, dtype=R.dtype, device=device)
             return empty_long, empty_long, empty_float, empty_float_3d, empty_float
         
-        R_ij_sq = dists_sq_all[idx_i, idx_j]
+        diff_ij = R[idx_i] - R[idx_j] - image_shifts_ij @ cell
+        R_ij_sq = torch.sum(diff_ij.square(), dim=1)
         R_ij = torch.sqrt(R_ij_sq + self.eps)
-        diff_ij = diff_cart_all[idx_i, idx_j]
         fc_ij = _cutoff(R_ij, self.r_cut)
 
         return idx_i, idx_j, R_ij, diff_ij, fc_ij
+
+    @staticmethod
+    def _build_triplet_pair_indices(idx_i: Tensor) -> Tuple[Tensor, Tensor]:
+        """同じ中心原子を持つ近傍ペアの組合せを O(T) メモリで作る。"""
+        device = idx_i.device
+        if idx_i.numel() < 2:
+            empty = torch.empty(0, dtype=torch.long, device=device)
+            return empty, empty
+
+        # torch.where 由来の idx_i は中心原子の昇順に並んでいる。
+        neighbor_counts = torch.unique_consecutive(idx_i, return_counts=True)[1].tolist()
+        num_triplets = sum(count * (count - 1) // 2 for count in neighbor_counts)
+        pair1_indices = torch.empty(num_triplets, dtype=torch.long, device=device)
+        pair2_indices = torch.empty_like(pair1_indices)
+
+        edge_offset = 0
+        triplet_offset = 0
+        for count in neighbor_counts:
+            count = int(count)
+            count_triplets = count * (count - 1) // 2
+            if count_triplets: # count_triplets が 0 でない場合のみ処理
+                local_pairs = torch.triu_indices(
+                    count, count, offset=1, device=device
+                )
+                target = slice(triplet_offset, triplet_offset + count_triplets)
+                pair1_indices[target] = local_pairs[0] + edge_offset
+                pair2_indices[target] = local_pairs[1] + edge_offset
+                triplet_offset += count_triplets
+            edge_offset += count
+
+        return pair1_indices, pair2_indices
 
     def compute(self, R_global: Tensor, Z: Tensor, cell: Tensor) -> Tensor:
         """
@@ -205,95 +235,113 @@ class SymmetryCalculator:
                 accumulate=True
             )
 
-        # --- G3 対称性関数の計算 (完全ベクトル化) ---
+        # --- G3 対称性関数の計算 (中心原子ごとの候補生成 + チャンク処理) ---
         G3_contrib = torch.zeros((N, self.g3_dim_total), device=device, dtype=dtype)
         if num_valid_pairs >= 2:
-            # Step 1: 全てのトリプレット候補 (i, j, k) を生成する
-            same_i_mask = (idx_i.unsqueeze(1) == idx_i.unsqueeze(0))
-            not_same_j_mask = (idx_j.unsqueeze(1) != idx_j.unsqueeze(0))
-            triu_mask = torch.triu(torch.ones_like(same_i_mask), diagonal=1).bool()
-            valid_triplet_pair_indices_mask = same_i_mask & not_same_j_mask & triu_mask
-            pair1_indices, pair2_indices = torch.where(valid_triplet_pair_indices_mask)
+            # P x P マスクを作らず、各中心原子の近傍同士だけを組み合わせる。
+            pair1_indices, pair2_indices = self._build_triplet_pair_indices(idx_i)
 
             if pair1_indices.numel() > 0:
-                # Step 2: トリプレット情報を一括で取得
-                triplet_i_idx = idx_i[pair1_indices]
-                triplet_j_idx = idx_j[pair1_indices]
-                triplet_k_idx = idx_j[pair2_indices]
+                g3_eta_dev = self.g3_eta_t.to(device, dtype=dtype)
+                g3_lam_dev = self.g3_lam_t.to(device, dtype=dtype)
+                g3_zet_dev = self.g3_zet_t.to(device, dtype=dtype)
+                power_of_2_factor = torch.pow(2.0, 1.0 - g3_zet_dev)
+                species_pair_lookup_matrix_dev = self.species_pair_lookup_matrix.to(device)
+                base_g3_param_indices = torch.arange(
+                    self.num_g3_base_params, device=device
+                ).unsqueeze(0)
 
-                R_ij_triplet    = R_ij[pair1_indices]
-                diff_ij_triplet = diff_ij[pair1_indices]
-                fc_ij_triplet   = fc_ij[pair1_indices]
-                
-                R_ik_triplet    = R_ij[pair2_indices]
-                diff_ik_triplet = diff_ij[pair2_indices]
-                fc_ik_triplet   = fc_ij[pair2_indices]
-                
-                # Step 3: R_jk と cos(theta_ijk) を一括計算
-                diff_jk_triplet = diff_ik_triplet - diff_ij_triplet
-                R_jk_sq_triplet = torch.sum(diff_jk_triplet.pow(2), dim=1)
-                
-                valid_jk_mask = R_jk_sq_triplet < (self.r_cut**2)
-                
-                if valid_jk_mask.any():
-                    # 有効なトリプレットのみに情報をフィルタリング
-                    R_ij_triplet = R_ij_triplet[valid_jk_mask]
-                    diff_ij_triplet = diff_ij_triplet[valid_jk_mask]
-                    fc_ij_triplet = fc_ij_triplet[valid_jk_mask]
-                    
-                    R_ik_triplet = R_ik_triplet[valid_jk_mask]
-                    diff_ik_triplet = diff_ik_triplet[valid_jk_mask]
-                    fc_ik_triplet = fc_ik_triplet[valid_jk_mask]
-                    
-                    R_jk_sq_triplet = R_jk_sq_triplet[valid_jk_mask]
+                # パラメータ展開テンソルを全トリプレット分保持しない。
+                for chunk_start in range(
+                    0, pair1_indices.numel(), self._G3_TRIPLET_CHUNK_SIZE
+                ):
+                    chunk_end = min(
+                        chunk_start + self._G3_TRIPLET_CHUNK_SIZE,
+                        pair1_indices.numel(),
+                    )
+                    pair1_chunk = pair1_indices[chunk_start:chunk_end]
+                    pair2_chunk = pair2_indices[chunk_start:chunk_end]
+
+                    diff_ij_triplet = diff_ij[pair1_chunk]
+                    diff_ik_triplet = diff_ij[pair2_chunk]
+                    diff_jk_triplet = diff_ik_triplet - diff_ij_triplet
+                    R_jk_sq_triplet = torch.sum(diff_jk_triplet.square(), dim=1)
+                    valid_jk_mask = R_jk_sq_triplet < self.r_cut ** 2
+                    valid_indices = torch.where(valid_jk_mask)[0]
+                    if valid_indices.numel() == 0:
+                        continue
+
+                    pair1_valid = pair1_chunk[valid_indices]
+                    pair2_valid = pair2_chunk[valid_indices]
+                    R_ij_triplet = R_ij[pair1_valid]
+                    R_ik_triplet = R_ij[pair2_valid]
+                    diff_ij_triplet = diff_ij_triplet[valid_indices]
+                    diff_ik_triplet = diff_ik_triplet[valid_indices]
+                    R_jk_sq_triplet = R_jk_sq_triplet[valid_indices]
                     R_jk_triplet = torch.sqrt(R_jk_sq_triplet + self.eps)
-                    fc_jk_triplet = _cutoff(R_jk_triplet, self.r_cut)
-                    
-                    triplet_i_idx = triplet_i_idx[valid_jk_mask]
-                    triplet_j_idx = triplet_j_idx[valid_jk_mask]
-                    triplet_k_idx = triplet_k_idx[valid_jk_mask]
 
-                    num_valid_triplets = R_ij_triplet.size(0)
+                    dot_product_ijk = torch.sum(
+                        diff_ij_triplet * diff_ik_triplet, dim=1
+                    )
+                    cos_theta_ijk = dot_product_ijk / (
+                        R_ij_triplet * R_ik_triplet + self.eps
+                    )
+                    cos_theta_ijk = torch.clamp(
+                        cos_theta_ijk, -1.0 + self.eps, 1.0 - self.eps
+                    )
+                    sum_sq_dists_triplet = (
+                        R_ij_triplet.square()
+                        + R_ik_triplet.square()
+                        + R_jk_sq_triplet
+                    )
 
-                    dot_product_ijk = torch.sum(diff_ij_triplet * diff_ik_triplet, dim=1)
-                    cos_theta_ijk = dot_product_ijk / (R_ij_triplet * R_ik_triplet + self.eps)
-                    cos_theta_ijk = torch.clamp(cos_theta_ijk, -1.0 + self.eps, 1.0 - self.eps)
-                    
-                    # Step 4: G3値を一括計算
-                    sum_sq_dists_triplet = R_ij_triplet.pow(2) + R_ik_triplet.pow(2) + R_jk_sq_triplet
-                    
-                    g3_eta_dev = self.g3_eta_t.to(device, dtype=dtype)
-                    g3_lam_dev = self.g3_lam_t.to(device, dtype=dtype)
-                    g3_zet_dev = self.g3_zet_t.to(device, dtype=dtype)
+                    radial_terms = torch.exp(
+                        -g3_eta_dev.view(1, -1)
+                        * sum_sq_dists_triplet.view(-1, 1)
+                    )
+                    base_angular = (
+                        1.0
+                        + g3_lam_dev.view(1, -1)
+                        * cos_theta_ijk.view(-1, 1)
+                    )
+                    angular_terms = base_angular.unsqueeze(-1).pow(
+                        g3_zet_dev.view(1, 1, -1)
+                    )
+                    g3_base_values_no_fc = (
+                        radial_terms.unsqueeze(-1).unsqueeze(-1)
+                        * angular_terms.unsqueeze(1)
+                        * power_of_2_factor.view(1, 1, 1, -1)
+                    )
+                    fc_combined_triplet = (
+                        fc_ij[pair1_valid]
+                        * fc_ij[pair2_valid]
+                        * _cutoff(R_jk_triplet, self.r_cut)
+                    )
+                    g3_vals_per_triplet_base = (
+                        g3_base_values_no_fc
+                        * fc_combined_triplet.view(-1, 1, 1, 1)
+                    ).reshape(valid_indices.numel(), -1)
 
-                    radial_terms = torch.exp(-g3_eta_dev.view(1, -1) * sum_sq_dists_triplet.view(-1, 1))
-                    base_angular = 1.0 + g3_lam_dev.view(1, -1) * cos_theta_ijk.view(-1, 1)
-                    angular_terms = base_angular.unsqueeze(-1).pow(g3_zet_dev.view(1, 1, -1))
-                    power_of_2_factor = torch.pow(2.0, 1.0 - g3_zet_dev)
-                    
-                    g3_base_values_no_fc = radial_terms.unsqueeze(-1).unsqueeze(-1) * \
-                                           angular_terms.unsqueeze(1) * \
-                                           power_of_2_factor.view(1, 1, 1, -1)
-                    
-                    fc_combined_triplet = fc_ij_triplet * fc_ik_triplet * fc_jk_triplet
-                    
-                    g3_vals_per_triplet_base = (g3_base_values_no_fc * fc_combined_triplet.view(-1, 1, 1, 1)).reshape(num_valid_triplets, -1)
-
-                    # Step 5: 結果を集約
-                    species_idx_j_of_triplets = species_atomic_indices[triplet_j_idx]
-                    species_idx_k_of_triplets = species_atomic_indices[triplet_k_idx]
-                    
-                    species_pair_lookup_matrix_dev = self.species_pair_lookup_matrix.to(device)
-                    triplet_pair_channels = species_pair_lookup_matrix_dev[species_idx_j_of_triplets, species_idx_k_of_triplets]
-                    
-                    base_g3_param_indices = torch.arange(self.num_g3_base_params, device=device).unsqueeze(0)
-                    target_g3_columns_for_triplets = triplet_pair_channels.unsqueeze(1) * self.num_g3_base_params + base_g3_param_indices
-                    
-                    g3_vals_per_triplet_base = g3_vals_per_triplet_base.to(dtype=dtype)
+                    triplet_i_idx = idx_i[pair1_valid]
+                    species_idx_j = species_atomic_indices[idx_j[pair1_valid]]
+                    species_idx_k = species_atomic_indices[idx_j[pair2_valid]]
+                    triplet_pair_channels = species_pair_lookup_matrix_dev[
+                        species_idx_j, species_idx_k
+                    ]
+                    target_g3_columns = (
+                        triplet_pair_channels.unsqueeze(1)
+                        * self.num_g3_base_params
+                        + base_g3_param_indices
+                    )
                     G3_contrib.index_put_(
-                        (triplet_i_idx.long().unsqueeze(1).expand_as(g3_vals_per_triplet_base), target_g3_columns_for_triplets.long()),
+                        (
+                            triplet_i_idx.unsqueeze(1).expand_as(
+                                g3_vals_per_triplet_base
+                            ),
+                            target_g3_columns,
+                        ),
                         g3_vals_per_triplet_base,
-                        accumulate=True
+                        accumulate=True,
                     )
 
         # --- 全対称性関数を結合 ---
