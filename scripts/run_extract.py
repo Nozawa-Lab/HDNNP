@@ -41,7 +41,7 @@ def parse_args():
     p.add_argument("-r", "--raw-dir", type=Path,
                    default=hdnnp_config.RAW_DATA_DIR, # config からデフォルト値を取得
                    help=f"directory containing VASP case folders (default from config: {hdnnp_config.RAW_DATA_DIR})")
-    p.add_argument("-o", "--out-dir", type=Path,
+    p.add_argument("-p", "--processed-dir", type=Path,
                    default=hdnnp_config.PROCESSED_DATA_DIR, # config からデフォルト値を取得
                    help=f"directory to write .npz (default from config: {hdnnp_config.PROCESSED_DATA_DIR})")
     p.add_argument("--npz-format", type=str,
@@ -529,7 +529,7 @@ def main():
         sys.exit(f"[ERR] raw-dir not found: {args.raw_dir}")
     
     print(f"Starting extraction from: {args.raw_dir.resolve()}")
-    print(f"Output directory: {args.out_dir.resolve()}")
+    print(f"Output directory: {args.processed_dir.resolve()}")
     print(f"NPZ filename format: '{args.npz_format}'")
 
 
@@ -537,7 +537,7 @@ def main():
         case_dir = Path(root_str)
         # XDATCAR, OSZICAR, OUTCAR が全て存在するディレクトリを処理対象とする
         if all((case_dir / fname).exists() for fname in ["XDATCAR", "OSZICAR", "OUTCAR"]):
-            extract_case(case_dir, args.out_dir, args.raw_dir, args.npz_format) # npz_format を渡す
+            extract_case(case_dir, args.processed_dir, args.raw_dir, args.npz_format) # npz_format を渡す
 
 if __name__ == "__main__":
     main()

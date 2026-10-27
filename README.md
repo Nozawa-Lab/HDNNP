@@ -79,14 +79,17 @@ VASPの計算結果から学習用データを抽出します。
 
 * **学習 (`scripts/run_train.py`)**
     モデルを学習し、チェックポイント (`model_fullbatch.pt`) を保存します。
+    `--processed-dir` と `--checkpoint-dir` は省略すると `hdnnp/config.py` の
+    `PROCESSED_DATA_DIR` と `CHECKPOINT_DIR` が使用されます。
     ```bash
-    python scripts/run_train.py --CHECKPOINT_DIR experiments_output/test_run
+    python scripts/run_train.py --processed-dir data/processed --checkpoint-dir experiments_output/test_run
     ```
 
 * **推論 (`scripts/run_infer.py`)**
     学習済みモデルで推論を行い、エネルギー・力の精度評価とプロット作成を行います。
+    ディレクトリ引数を省略した場合も、同じく `config.py` の設定が使用されます。
     ```bash
-    python scripts/run_infer.py --CHECKPOINT_DIR experiments_output/test_run
+    python scripts/run_infer.py --processed-dir data/processed --checkpoint-dir experiments_output/test_run
     ```
 
 * **各種分析**
