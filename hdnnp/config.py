@@ -77,6 +77,10 @@ NPZ_FILENAME_FORMAT: str = "{prefix}_frame{frame_num:04d}.npz"
 # ------------------------------------------------------------------
 # Data Splitting Configuration (for make_splits.py)
 # ------------------------------------------------------------------
+#: train/valid の割り当て方法
+#: "manual": raw/{train,valid,test} から processed/{train,valid,test} へ (使用者が自分で割り当てる)
+#: "random": raw/{train-valid,test} から processed/{train-valid,test} へ (train/valid は make_splits.py でランダムに分割)
+SPLIT_MODE: str = "random"
 SPLIT_SEED: int = 1234
 SPLIT_TRAIN_FRACTION: float = 0.8
 SPLIT_VALID_FRACTION: float = 0.2
@@ -112,7 +116,7 @@ Z2ELEMENT: Dict[int, str] = {13: "Al", 26: "Fe", 78: "Pt"}
 # ------------------------------------------------------------------
 # Model Configuration
 # ------------------------------------------------------------------
-HIDDEN_LAYERS: List[int] = [20, 20]
+HIDDEN_LAYERS: List[int] = [30, 30]
 
 # 隠れ層の活性化関数 (Tanh, ReLU, GELU, SiLU, Sigmoid, ELU, LeakyReLU)
 ACTIVATION_FUNCTION: str = "Tanh"
@@ -127,7 +131,7 @@ DROPOUT_RATE: float = 0.1 # 一般的には 0.1 ~ 0.5 の値が使われます
 # Training Configuration
 # ------------------------------------------------------------------
 #: 学習に力の情報を使用するかどうか
-USE_FORCE_TRAINING: bool = False
+USE_FORCE_TRAINING: bool = True
 
 # ▼▼▼ 以下を追加 ▼▼▼
 # --- Extrapolation Check Configuration ---
@@ -170,7 +174,7 @@ OPTIMIZER_PARAMS: Dict[str, Any] = {
 
 #: 学習の最大イテレーション数 (optimizer.step() が呼ばれる回数)
 #: LBFGSの場合、TRAIN_MAX_ITERATIONS * OPTIMIZER_PARAMS["LBFGS"]["max_iter"] が総計算回数に近いイメージ
-TRAIN_MAX_ITERATIONS: int = 200 # run_train.py でのメインループのイテレーション数
+TRAIN_MAX_ITERATIONS: int = 500 # run_train.py でのメインループのイテレーション数
 
 #: 使用する学習ループ ("train" または "train_lbfgs_batch_epoch")
 TRAINING_LOOP: str = "train" # "train" または "train_lbfgs_batch_epoch"
@@ -178,7 +182,7 @@ TRAINING_LOOP: str = "train" # "train" または "train_lbfgs_batch_epoch"
 #: エネルギー損失 (MSE) に対する重み α
 LOSS_ALPHA_E: float = 1.0
 #: エネルギー損失を各系の原子数で正規化して 1 原子あたりの誤差として扱うか(Trueが猿谷さん、Falseが迫田さん)
-ENERGY_LOSS_NORMALIZE_PER_ATOM: bool = True
+ENERGY_LOSS_NORMALIZE_PER_ATOM: bool = False
 #: 力損失 (MSE) に対する重み β (USE_FORCE_TRAININGがTrueの場合のみ有効)
 LOSS_BETA_F: float = 8.0
 

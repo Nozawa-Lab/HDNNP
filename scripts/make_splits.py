@@ -75,47 +75,36 @@ def main():
         print(f"Error: Processed directory not found: {args.processed_dir}", file=sys.stderr)
         sys.exit(1)
     
-    #proc_train_valid = args.processed_dir / "train_valid"
-    proc_train = args.processed_dir / "train"
-    proc_valid = args.processed_dir / "valid"
     proc_test = args.processed_dir / "test"
-    
-    # Scan processed directory for .npz files
-    #files = sorted([p.stem for p in args.processed_dir.glob('*.npz')])
-    #files_train_valid = sorted([p.stem for p in proc_train_valid.glob('*.npz')])
-    files_train = sorted([p.stem for p in proc_train.glob('*.npz')])
-    files_valid = sorted([p.stem for p in proc_valid.glob('*.npz')])
-    files_test = sorted([p.stem for p in proc_test.glob('*.npz')])
-    if not files_train or not files_valid or not files_test:
-        # raise RuntimeError(f'No .npz files found in {args.processed_dir}')
-        print(f"Warning: No .npz files found in {proc_train} , {proc_valid} or {proc_test}. Generating empty splits.json.", file=sys.stderr)
-        # 空の splits を作成して終了する
-        splits = {'train': [], 'valid': [], 'test': []}
+    files_test = sorted([f"test/{p.stem}" for p in proc_test.glob('*.npz')])
+
+    # splits.json には processed_dir からの相対パス (例: train/xxx) を記録する
+    if hdnnp_config.SPLIT_MODE == "random":
+        # train-valid を固定シードでシャッフルして分割
+        proc_train_valid = args.processed_dir / "train-valid"
+        files_train_valid = sorted([f"train-valid/{p.stem}" for p in proc_train_valid.glob('*.npz')])
+        if not files_train_valid or not files_test:
+            print(f"Warning: No .npz files found in {proc_train_valid} or {proc_test}. Generating empty splits.json.", file=sys.stderr)
+            splits = {'train': [], 'valid': [], 'test': []}
+        else:
+            random.seed(args.seed)
+            random.shuffle(files_train_valid)
+            n = len(files_train_valid)
+            n_train = int(n * hdnnp_config.SPLIT_TRAIN_FRACTION)
+            splits = {
+                'train': sorted(files_train_valid[:n_train]),
+                'valid': sorted(files_train_valid[n_train:]),
+                'test':  files_test,
+            }
     else:
-        # Shuffle with fixed seed
-        random.seed(args.seed)
-        #random.shuffle(files_train_valid)
-
-        #n = len(files_train_valid)
-        #n_train = int(n * args.train_fraction)
-        #n_valid = int(n * args.valid_fraction)
-        '''
-        if n_train + n_valid > n:
-            print(f"Error: train_fraction ({args.train_fraction}) + valid_fraction ({args.valid_fraction}) > 1.0. Cannot create splits.", file=sys.stderr)
-            # n_valid を調整するなどの処理も可能だが、ここではエラーとする
-            n_valid = n - n_train
-            if n_valid < 0: n_valid = 0
-            print(f"Adjusting valid samples to {n_valid} to fit total samples {n}.", file=sys.stderr)
-        '''
-
-        # ▼▼▼ 変更箇所 ▼▼▼
-        # 各リストを分割した後に、sorted() を使ってアルファベット順にソートする
-        splits = {
-            'train': sorted(files_train),
-            'valid': sorted(files_valid),
-            'test':  sorted(files_test),
-        }
-        # ▲▲▲ 変更ここまで ▲▲▲
+        # manual: processed/{train,valid,test} をそのまま使用
+        files_train = sorted([f"train/{p.stem}" for p in (args.processed_dir / "train").glob('*.npz')])
+        files_valid = sorted([f"valid/{p.stem}" for p in (args.processed_dir / "valid").glob('*.npz')])
+        if not files_train or not files_valid or not files_test:
+            print(f"Warning: No .npz files found in train, valid or test under {args.processed_dir}. Generating empty splits.json.", file=sys.stderr)
+            splits = {'train': [], 'valid': [], 'test': []}
+        else:
+            splits = {'train': files_train, 'valid': files_valid, 'test': files_test}
 
     # Save splits.json
     out_path = args.processed_dir / args.splits_filename # config から取得したファイル名を使用
