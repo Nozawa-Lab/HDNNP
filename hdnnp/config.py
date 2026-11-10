@@ -80,7 +80,7 @@ NPZ_FILENAME_FORMAT: str = "{prefix}_frame{frame_num:04d}.npz"
 #: train/valid の割り当て方法
 #: "manual": raw/{train,valid,test} から processed/{train,valid,test} へ (使用者が自分で割り当てる)
 #: "random": raw/{train-valid,test} から processed/{train-valid,test} へ (train/valid は make_splits.py でランダムに分割)
-SPLIT_MODE: str = "random"
+SPLIT_MODE: str = "manual"
 SPLIT_SEED: int = 1234
 SPLIT_TRAIN_FRACTION: float = 0.8
 SPLIT_VALID_FRACTION: float = 0.2
@@ -88,7 +88,7 @@ SPLIT_VALID_FRACTION: float = 0.2
 # ------------------------------------------------------------------
 # DataLoader Configuration
 # ------------------------------------------------------------------
-DATALOADER_TRAIN_BATCH_SIZE: int = 12 # L-BFGSでは無視される可能性あり (フルバッチの場合)
+DATALOADER_TRAIN_BATCH_SIZE: int = 1 # L-BFGSでは無視される可能性あり (フルバッチの場合)
 DATALOADER_INFER_BATCH_SIZE: int = 128
 DATALOADER_SHUFFLE_TRAIN: bool = True
 DATALOADER_SHUFFLE_INFER: bool = False
@@ -174,7 +174,7 @@ OPTIMIZER_PARAMS: Dict[str, Any] = {
 
 #: 学習の最大イテレーション数 (optimizer.step() が呼ばれる回数)
 #: LBFGSの場合、TRAIN_MAX_ITERATIONS * OPTIMIZER_PARAMS["LBFGS"]["max_iter"] が総計算回数に近いイメージ
-TRAIN_MAX_ITERATIONS: int = 500 # run_train.py でのメインループのイテレーション数
+TRAIN_MAX_ITERATIONS: int = 800 # run_train.py でのメインループのイテレーション数
 
 #: 使用する学習ループ ("train" または "train_lbfgs_batch_epoch")
 TRAINING_LOOP: str = "train" # "train" または "train_lbfgs_batch_epoch"
@@ -188,11 +188,11 @@ LOSS_BETA_F: float = 8.0
 
 # --- Early Stopping Configuration ---
 #: 早期終了を有効にするか
-EARLY_STOPPING_ENABLED: bool = True
+EARLY_STOPPING_ENABLED: bool = False
 #: 早期終了の監視対象 ('loss', 'rmse_e', 'rmse_f')
 EARLY_STOPPING_MONITOR: str = "loss" # または 'rmse_e_pa', 'rmse_f_pa'
 #: 監視対象の改善が見られなくなってから待つイテレーション数
-EARLY_STOPPING_PATIENCE: int = 10
+EARLY_STOPPING_PATIENCE: int = 20
 #: 「改善」とみなす最小の変化量 (絶対値)
 EARLY_STOPPING_MIN_DELTA: float = 1e-6
 #: 早期終了の目標値 (この値を下回ったら/上回ったら終了、監視対象による)
