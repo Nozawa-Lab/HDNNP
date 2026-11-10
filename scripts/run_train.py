@@ -58,10 +58,12 @@ from hdnnp.data_loader import get_dataloader
 # 新しいバッチ対応版の学習ループ
 from hdnnp.train_lbfgs_batch_epoch import train_lbfgs_batch_epoch
 from hdnnp.train import train
-from hdnnp.symmetry_calculator import SymmetryCalculator
+#from hdnnp.symmetry_calculator import SymmetryCalculator
+from hdnnp.symmetry_calculator_periodic import SymmetryCalculator
 from hdnnp.model import HDNNPModel
 
-PROCESSED_DIR = hdnnp_config.PROCESSED_DATA_DIR
+#PROCESSED_DIR = hdnnp_config.PROCESSED_DATA_DIR
+PROCESSED_DIR = Path("/home/takushima/HDNNP/data/processed_fp64_onlytetra")
 #TRAIN_VALID_DIR = PROCESSED_DIR / "train_valid"
 TRAIN_DIR = PROCESSED_DIR / "train"
 VALID_DIR = PROCESSED_DIR / "valid"
