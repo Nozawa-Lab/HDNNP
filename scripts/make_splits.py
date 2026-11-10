@@ -76,7 +76,7 @@ def main():
         sys.exit(1)
     
     proc_test = args.processed_dir / "test"
-    files_test = sorted([f"test/{p.stem}" for p in proc_test.glob('*.npz')])
+    files_test = sorted([f"{p.stem}" for p in proc_test.glob('*.npz')])
 
     # splits.json には processed_dir からの相対パス (例: train/xxx) を記録する
     if hdnnp_config.SPLIT_MODE == "random":
@@ -98,8 +98,8 @@ def main():
             }
     else:
         # manual: processed/{train,valid,test} をそのまま使用
-        files_train = sorted([f"train/{p.stem}" for p in (args.processed_dir / "train").glob('*.npz')])
-        files_valid = sorted([f"valid/{p.stem}" for p in (args.processed_dir / "valid").glob('*.npz')])
+        files_train = sorted([f"{p.stem}" for p in (args.processed_dir / "train").glob('*.npz')])
+        files_valid = sorted([f"{p.stem}" for p in (args.processed_dir / "valid").glob('*.npz')])
         if not files_train or not files_valid or not files_test:
             print(f"Warning: No .npz files found in train, valid or test under {args.processed_dir}. Generating empty splits.json.", file=sys.stderr)
             splits = {'train': [], 'valid': [], 'test': []}
