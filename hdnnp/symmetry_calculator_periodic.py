@@ -186,9 +186,9 @@ class SymmetryCalculator:
             translations = self._lattice_translations(search_cell)
             wrapped_search = R.detach() - atom_wrap_shifts.to(dtype) @ search_cell # 中心セル内に原子をラップした座標
 
-            idx_i_parts: List[Tensor] = [] # 各格子シフトに対する原子ペアのiインデックスの部分リスト
-            idx_j_parts: List[Tensor] = [] # 各格子シフトに対する原子ペアのjインデックスの部分リスト
-            image_shift_parts: List[Tensor] = [] # 各格子シフトに対する原子ペアの格子シフトベクトルの部分リスト
+            idx_i_parts: List[Tensor] = [] # 各格子シフトに対する原子ペアのiインデックスの部分リスト。要素には各格子シフトに対するカットオフ内のiインデックスリストが格納される。
+            idx_j_parts: List[Tensor] = [] # 各格子シフトに対する原子ペアのjインデックスの部分リスト。要素には各格子シフトに対するカットオフ内のjインデックスリストが格納される。
+            image_shift_parts: List[Tensor] = [] # 各格子シフトに対する原子ペアの格子シフトベクトルの部分リスト。要素には各格子シフトに対するカットオフ内の格子シフトベクトルリストが格納される。
             diagonal = torch.eye(num_atoms, dtype=torch.bool, device=device)
 
             for translation in translations: # 各格子シフトベクトルに対して近傍原子ペアを探索
@@ -197,9 +197,9 @@ class SymmetryCalculator:
                     wrapped_search.unsqueeze(1)
                     - wrapped_search.unsqueeze(0)
                     - translation_cart
-                ) # 各原子ペアの差ベクトル
+                ) # 各原子ペアの差ベクトル(r_A - r'_B)
                 distance_sq = torch.sum(diff_all.square(), dim=2) # 各原子ペアの距離の二乗。shape=(num_atoms, num_atoms)
-                mask = distance_sq < self.r_cut ** 2
+                mask = distance_sq < self.r_cut ** 2 # shape=(num_atoms, num_atoms)のカットオフ内マスク
                 if bool(torch.all(translation == 0)): # 中心セル内に対する処理。自己原子ペアを除外する。
                     mask &= ~diagonal # 対角成分が0, 非対角成分が1のマスクと、mask(距離がカットオフ内ならTrue=0)を組み合わせて、自己原子ペアを除外する。
                 pair_i, pair_j = torch.where(mask) # カットオフ内の原子ペアのインデックスを取得。
@@ -208,7 +208,7 @@ class SymmetryCalculator:
                 idx_i_parts.append(pair_i)
                 idx_j_parts.append(pair_j)
                 image_shift_parts.append(
-                    translation.expand(pair_i.numel(), 3).clone()
+                    translation.expand(pair_i.numel(), 3).clone() # 各原子ペアに対する格子シフトベクトルを複製
                 )
 
             if not idx_i_parts:
@@ -226,17 +226,17 @@ class SymmetryCalculator:
 
             # G3候補生成が中心原子ごとの連続領域を仮定するため安定ソート。
             order = torch.argsort(idx_i, stable=True) # idx_iを昇順にソートし、インデックスの順序を取得
-            idx_i = idx_i[order] # ソート後のidx_i
-            idx_j = idx_j[order] # ソート後のidx_j
-            image_shifts = image_shifts[order] # ソート後の格子シフトベクトル
+            idx_i = idx_i[order] # 中心原子ごとにソートされたiインデックス
+            idx_j = idx_j[order] # 中心原子iに対応するようにソートされたjインデックス
+            image_shifts = image_shifts[order] # 中心原子iに対応するようにソートされた格子シフトベクトル
 
         wrapped_R = R - atom_wrap_shifts.to(dtype) @ cell
         diff_ij = (
             wrapped_R[idx_i]
             - wrapped_R[idx_j]
             - image_shifts.to(dtype) @ cell
-        )
-        distance_sq = torch.sum(diff_ij.square(), dim=1)
+        ) # 中心原子iに対応するようにラップされた原子間ベクトルを計算。カーテシアン座標系での差分ベクトル。
+        distance_sq = torch.sum(diff_ij.square(), dim=1) # shape=(num_pairs,)の原子間距離の二乗
         distances = torch.sqrt(distance_sq + self.eps)
         cutoff_values = _cutoff(distances, self.r_cut)
         return idx_i, idx_j, distances, diff_ij, cutoff_values
@@ -251,23 +251,23 @@ class SymmetryCalculator:
 
         neighbor_counts = torch.unique_consecutive(
             idx_i, return_counts=True
-        )[1].tolist()
-        num_triplets = sum(count * (count - 1) // 2 for count in neighbor_counts)
+        )[1].tolist() # 各中心原子に対する近傍原子の数をリストとして取得
+        num_triplets = sum(count * (count - 1) // 2 for count in neighbor_counts) # 全トリプレット数
         pair1_indices = torch.empty(num_triplets, dtype=torch.long, device=device)
         pair2_indices = torch.empty_like(pair1_indices)
 
         edge_offset = 0
         triplet_offset = 0
-        for count_value in neighbor_counts:
+        for count_value in neighbor_counts: #　各中心原子に対する近傍原子の数を順に処理
             count = int(count_value)
-            count_triplets = count * (count - 1) // 2
+            count_triplets = count * (count - 1) // 2 # この中心原子に対するトリプレット数
             if count_triplets:
                 local_pairs = torch.triu_indices(
                     count, count, offset=1, device=device
-                )
+                ) #　上三角行列のインデックスを取得（対角成分は除外）。中心原子に対する近傍原子のペアを表す。上三角部分のみを使用するのは、各ペアを一度だけカウントするため。
                 target = slice(triplet_offset, triplet_offset + count_triplets)
-                pair1_indices[target] = local_pairs[0] + edge_offset
-                pair2_indices[target] = local_pairs[1] + edge_offset
+                pair1_indices[target] = local_pairs[0] + edge_offset # 各中心原子に対応する近傍原子1のインデックスを一括で設定
+                pair2_indices[target] = local_pairs[1] + edge_offset # 各中心原子に対応する近傍原子2のインデックスを一括で設定
                 triplet_offset += count_triplets
             edge_offset += count
         return pair1_indices, pair2_indices
