@@ -19,8 +19,8 @@ from torch import optim, Tensor
 from torch.utils.data import DataLoader
 
 from . import config as hdnnp_config
-from .symmetry_calculator import SymmetryCalculator
-
+#from .symmetry_calculator import SymmetryCalculator
+from .symmetry_calculator_periodic import SymmetryCalculator
 
 class EarlyStopper:
     """学習の早期終了を管理するクラス。"""

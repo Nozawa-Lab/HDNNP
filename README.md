@@ -92,6 +92,15 @@ VASPの計算結果から学習用データを抽出します。
     python scripts/run_infer.py --processed-dir data/processed --checkpoint-dir experiments_output/test_run
     ```
 
+* **POSCARの座標抽出 (`scripts/run_extract_poscar.py`)**
+    エネルギーや力のないPOSCARから、座標・元素番号・セルを抽出して `.npz` に保存します。
+    入力にはPOSCARファイル1つ、またはPOSCARを含むディレクトリを指定できます。
+    ディレクトリの場合は、配下を再帰的に検索して `POSCAR` という名前のファイルを処理します。
+    浮動小数点型は `HDNNP_FLOAT_PRECISION` に従い、エネルギーと力は未提供を示す `NaN` になります。
+    ```bash
+    python scripts/run_extract_poscar.py --input structures --output-dir data/inference
+    ```
+
 * **各種分析**
     必要に応じて `scripts/analyze_*.py` や `scripts/diagnose_outliers.py` を実行します。
 

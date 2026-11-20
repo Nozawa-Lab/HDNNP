@@ -16,7 +16,8 @@ from torch import optim, Tensor
 from torch.utils.data import DataLoader
 
 from . import config as hdnnp_config
-from .symmetry_calculator import SymmetryCalculator
+#from .symmetry_calculator import SymmetryCalculator
+from .symmetry_calculator_periodic import SymmetryCalculator
 # EarlyStopper クラスは、このファイル内またはインポートされるモジュールで定義されていると仮定します。
 # もし未定義の場合は、以前の回答から EarlyStopper クラスの定義をここに含めてください。
 

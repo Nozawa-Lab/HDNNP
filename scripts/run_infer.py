@@ -46,10 +46,12 @@ except Exception as e:
     
 from hdnnp.data_loader import get_dataloader, HDNPDataset
 from hdnnp.model import HDNNPModel
-from hdnnp.symmetry_calculator import SymmetryCalculator
+#from hdnnp.symmetry_calculator import SymmetryCalculator
+from hdnnp.symmetry_calculator_periodic import SymmetryCalculator
 from hdnnp.loss import combined_loss
 
-PROCESSED_DIR = hdnnp_config.PROCESSED_DATA_DIR
+PROCESSED_DIR = Path("/home/takushima/HDNNP/data/processed_fp64_onlytetra")
+#PROCESSED_DIR = hdnnp_config.PROCESSED_DATA_DIR
 #TRAIN_VALID_DIR = PROCESSED_DIR / "train_valid"
 TRAIN_DIR = PROCESSED_DIR / "train"
 VALID_DIR = PROCESSED_DIR / "valid"
